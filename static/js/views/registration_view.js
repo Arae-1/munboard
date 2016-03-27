@@ -9,7 +9,7 @@ class RegistrationView extends BaseView {
         this.template = this.getTemplate('user-registration-template');
     }
 
-    render(settings) {
+    render(options) {
         this.showView(this.template());
         const form = document.querySelector('#content-holder form');
         this.decorateValidator(form);
@@ -27,7 +27,7 @@ class RegistrationView extends BaseView {
                 password: passwordField.value,
                 email: emailField.value,
             };
-            settings.onRegistered(user);
+            options.register(user);
         });
     }
 }
