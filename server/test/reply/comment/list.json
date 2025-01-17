@@ -1,7 +1,7 @@
 {
     "query": "-sort:id",
     "offset": 0,
-    "limit": 42,
+    "limit": 40,
     "total": 4,
     "results": [
         {
