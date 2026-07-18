@@ -102,6 +102,7 @@ pub enum Field {
     Flags,
     Source,
     Description,
+    LaunchDate,
     CreationTime,
     LastEditTime,
     ContentUrl,
@@ -167,6 +168,8 @@ pub struct PostInfo {
     source: Option<LargeString>,
     /// Text description for the post. The client should render is as Markdown.
     description: Option<LargeString>,
+    /// Launch date for the post.
+    launch_date: Option<Option<DateTime>>,
     /// Time the tag was created.
     creation_time: Option<DateTime>,
     /// Time the tag was last edited.
@@ -270,6 +273,7 @@ impl PostInfo {
                 flags: fields[Field::Flags].then_some(post.flags),
                 source: fields[Field::Source].then_some(post.source),
                 description: fields[Field::Description].then_some(post.description),
+                launch_date: fields[Field::LaunchDate].then_some(post.launch_date),
                 creation_time: fields[Field::CreationTime].then_some(post.creation_time),
                 last_edit_time: fields[Field::LastEditTime].then_some(post.last_edit_time),
                 content_url: content_urls.pop(),

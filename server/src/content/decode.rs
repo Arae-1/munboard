@@ -26,6 +26,8 @@ pub fn representative_image(config: &Config, file_path: &Path, mime_type: MimeTy
         MimeType::Swf => flash_image(config, file_path).and_then(|frame| frame.ok_or(ApiError::EmptySwf)),
         MimeType::Avif => ffmpeg_frame(file_path, PostType::Image)
             .and_then(|frame| frame.ok_or(ApiError::FfmpegError("Unable to decode AVIF image with FFmpeg".into()))),
+        MimeType::Pdf => ffmpeg_frame(file_path, PostType::Document)
+            .and_then(|frame| frame.ok_or(ApiError::EmptyVideo)),
         MimeType::Mov | MimeType::Mp4 | MimeType::Webm => {
             ffmpeg_frame(file_path, PostType::Video).and_then(|frame| frame.ok_or(ApiError::EmptyVideo))
         }
@@ -90,6 +92,7 @@ pub fn detect_post_type(file_path: &Path, mime_type: MimeType) -> ApiResult<Post
         MimeType::Bmp | MimeType::Jpeg | MimeType::Png => Ok(PostType::Image),
         MimeType::Mp4 | MimeType::Mov | MimeType::Webm => Ok(PostType::Video),
         MimeType::Swf => Ok(PostType::Flash),
+        MimeType::Pdf => Ok(PostType::Document),
     }
 }
 

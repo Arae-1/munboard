@@ -71,6 +71,7 @@ pub enum PostType {
     Animation,
     Video,
     Flash,
+    Document,
 }
 
 impl ToSql<SmallInt, Pg> for PostType {
@@ -111,6 +112,8 @@ pub enum MimeType {
     Swf,
     #[serde(rename = "image/avif")]
     Avif,
+    #[serde(rename = "application/pdf")]
+    Pdf,
 }
 
 impl MimeType {
@@ -128,6 +131,7 @@ impl MimeType {
             "webm" => Ok(Self::Webm),
             "webp" => Ok(Self::Webp),
             "swf" => Ok(Self::Swf),
+            "pdf" => Ok(Self::Pdf),
             _ => Err(ParseExtensionError(extension.into())),
         }
     }
@@ -152,6 +156,7 @@ impl MimeType {
             Self::Mov => "mov",
             Self::Webm => "webm",
             Self::Swf => "swf",
+            Self::Pdf => "pdf",
         }
     }
 }
@@ -171,6 +176,7 @@ impl FromStr for MimeType {
             "video/mp4" => Ok(MimeType::Mp4),
             "video/quicktime" => Ok(MimeType::Mov),
             "video/webm" => Ok(MimeType::Webm),
+            "application/pdf" => Ok(MimeType::Pdf),
             s => Err(ParseMimeTypeError(s.into())),
         }
     }

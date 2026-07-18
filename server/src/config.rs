@@ -116,6 +116,7 @@ pub enum Action {
     PostEditRelation,
     PostEditSafety,
     PostEditSource,
+    PostEditLaunchDate,
     PostEditTag,
     PostEditThumbnail,
     PostFeature,

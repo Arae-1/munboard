@@ -8,6 +8,7 @@ use crate::resource::post::Note;
 use crate::schema::{post_feature, post_note, post_relation, post_tag, tag_name};
 use crate::snapshot;
 use crate::string::{LargeString, SmallString};
+use crate::time::DateTime;
 use diesel::{
     ExpressionMethods, JoinOnDsl, OptionalExtension, PgConnection, QueryDsl, QueryResult, RunQueryDsl, SelectableHelper,
 };
@@ -21,6 +22,7 @@ pub struct SnapshotData {
     pub flags: PostFlags,
     pub source: LargeString,
     pub description: LargeString,
+    pub launch_date: Option<DateTime>,
     pub tags: Vec<SmallString>,
     pub relations: Vec<i64>,
     pub notes: Vec<Note>,
@@ -54,6 +56,7 @@ impl SnapshotData {
             flags: post.flags,
             source: post.source,
             description: post.description,
+            launch_date: post.launch_date,
             tags,
             relations,
             notes: notes.into_iter().map(Note::new).collect(),

@@ -54,6 +54,12 @@
             </section>
         <% } %>
 
+        <% if (ctx.post.launchDate) { %>
+            <section class='launch-date'>
+                Launch date: <%- ctx.post.launchDate.slice(0, 10) %>
+            </section>
+        <% } %>
+
         <section class='search'>
             Search on
             <a href='http://iqdb.org/?url=<%- encodeURIComponent(ctx.post.fullContentUrl) %>'>IQDB</a> &middot;

@@ -32,6 +32,7 @@ class PostEditSidebarControl extends events.EventTarget {
                 enableSafety: api.safetyEnabled(),
                 hasClipboard: document.queryCommandSupported("copy"),
                 canEditPostSafety: api.hasPrivilege("post_edit_safety"),
+                canEditPostLaunchDate: api.hasPrivilege("post_edit_launch_date"),
                 canEditPostSource: api.hasPrivilege("post_edit_source"),
                 canEditPostTags: api.hasPrivilege("post_edit_tag"),
                 canEditPostRelations: api.hasPrivilege("post_edit_relation"),
@@ -448,6 +449,10 @@ class PostEditSidebarControl extends events.EventTarget {
                         ? this._sourceInputNode.value
                         : undefined,
 
+                    launchDate: this._launchDateInputNode
+                        ? this._launchDateInputNode.value
+                        : undefined,
+
                     description: (api.hasPrivilege("post_edit_description") && this._descriptionTextareaNode)
                         ? this._descriptionTextareaNode.value
                         : undefined,
@@ -520,6 +525,10 @@ class PostEditSidebarControl extends events.EventTarget {
 
     get _sourceInputNode() {
         return this._formNode.querySelector(".post-source textarea");
+    }
+
+    get _launchDateInputNode() {
+        return this._formNode.querySelector(".post-launch-date input");
     }
 
     get _featureLinkNode() {

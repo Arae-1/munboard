@@ -120,7 +120,7 @@ where
 /// | `note-text`                                                  | having given note text (accepts wildcards)                              |
 /// | `relation-count`                                             | having given number of relations                                        |
 /// | `feature-count`                                              | having been featured given number of times                              |
-/// | `type`                                                       | type of posts (can be either `image`, `animation`, `flash`, or `video`) |
+/// | `type`                                                       | type of posts (can be either `image`, `animation`, `flash`, `video`, or `document`) |
 /// | `content-checksum`                                           | having given BLAKE3 checksum                                            |
 /// | `flag`                                                       | having given flag (can be either `loop` or `sound`)                     |
 /// | `source`                                                     | having given source                                                     |
@@ -627,6 +627,7 @@ async fn create_impl(ctx: Ctx, params: ResourceParams<Field>, body: PostCreateBo
                 flags,
                 source: body.source.as_deref().unwrap_or(""),
                 description: body.description.as_deref().unwrap_or(""),
+                launch_date: body.launch_date,
             }
             .insert_into(post::table)
             .on_conflict(post::checksum)
@@ -666,6 +667,7 @@ async fn create_impl(ctx: Ctx, params: ResourceParams<Field>, body: PostCreateBo
                 flags: post.flags,
                 source: post.source,
                 description: post.description,
+                launch_date: post.launch_date,
                 tags,
                 relations,
                 notes,
@@ -702,6 +704,8 @@ struct PostCreateBody {
     source: Option<String>,
     /// Post description.
     description: Option<String>,
+    /// Launch date for the post.
+    launch_date: Option<DateTime>,
     /// IDs of related posts.
     relations: Option<Vec<i64>>,
     /// If true, the uploader name won't be recorded.
@@ -995,6 +999,12 @@ async fn update_impl(
                 new_post.description = description.clone();
                 new_snapshot_data.description = description;
             }
+            if body.launch_date.is_some() {
+                ctx.verify_privilege(Action::PostEditLaunchDate)?;
+
+                new_post.launch_date = body.launch_date;
+                new_snapshot_data.launch_date = body.launch_date;
+            }
             if let Some(mut relations) = body.relations {
                 ctx.verify_privilege(Action::PostEditRelation)?;
 
@@ -1081,6 +1091,8 @@ struct PostUpdateBody {
     source: Option<LargeString>,
     /// Post description.
     description: Option<LargeString>,
+    /// Launch date for the post.
+    launch_date: Option<DateTime>,
     /// IDs of related posts.
     relations: Option<Vec<i64>>,
     /// Tags to apply. Non-existent tags will be created automatically.

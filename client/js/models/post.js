@@ -78,16 +78,20 @@ class Post extends events.EventTarget {
         return this._source;
     }
 
+    get launchDate() {
+        return this._launchDate;
+    }
+
     get sourceSplit() {
         return this._source.split("\n").filter((s) => s);
     }
 
     get canvasWidth() {
-        return this._canvasWidth || 800;
+        return this.type === "document" ? 850 : this._canvasWidth || 800;
     }
 
     get canvasHeight() {
-        return this._canvasHeight || 450;
+        return this.type === "document" ? 1100 : this._canvasHeight || 450;
     }
 
     get fileSize() {
@@ -184,6 +188,10 @@ class Post extends events.EventTarget {
 
     set source(value) {
         this._source = value;
+    }
+
+    set launchDate(value) {
+        this._launchDate = value;
     }
 
     static fromResponse(response) {
@@ -291,6 +299,9 @@ class Post extends events.EventTarget {
         }
         if (this._source !== this._orig._source) {
             detail.source = this._source;
+        }
+        if (this._launchDate !== this._orig._launchDate) {
+            detail.launchDate = this._launchDate;
         }
         if (this._description !== this._orig._description) {
             detail.description = this._description;
@@ -498,6 +509,7 @@ class Post extends events.EventTarget {
             ).href,
             _thumbnailUrl: response.thumbnailUrl,
             _source: response.source,
+            _launchDate: response.launchDate,
             _canvasWidth: response.canvasWidth,
             _canvasHeight: response.canvasHeight,
             _fileSize: response.fileSize,

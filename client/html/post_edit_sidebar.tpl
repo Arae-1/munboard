@@ -67,6 +67,16 @@
             </section>
         <% } %>
 
+        <% if (ctx.canEditPostLaunchDate) { %>
+            <section class='post-launch-date'>
+                <%= ctx.makeDateInput({
+                    text: 'Launch date (UTC)',
+                    name: 'launch-date',
+                    value: ctx.post.launchDate ? ctx.post.launchDate.slice(0, 10) : '',
+                }) %>
+            </section>
+        <% } %>
+
         <% if (ctx.canEditPostTags) { %>
             <section class='tags'>
                 <%= ctx.makeTextInput({}) %>

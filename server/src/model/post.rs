@@ -36,6 +36,7 @@ pub struct NewPost<'a> {
     pub flags: PostFlags,
     pub source: &'a str,
     pub description: &'a str,
+    pub launch_date: Option<DateTime>,
 }
 
 #[derive(Clone, AsChangeset, Associations, Identifiable, Queryable, Selectable)]
@@ -60,6 +61,7 @@ pub struct Post {
     pub last_edit_time: DateTime,
     pub generated_thumbnail_size: i64,
     pub custom_thumbnail_size: i64,
+    pub launch_date: Option<DateTime>,
     pub description: LargeString,
 }
 

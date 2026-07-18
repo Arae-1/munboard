@@ -28,6 +28,13 @@
             'Your browser doesn\'t support HTML5 videos.')
         %>
 
+        <% } else if (ctx.post.type === 'document') { %>
+
+            <div class='post-document-viewer'>
+                <embed class='resize-listener' src='<%- ctx.post.contentUrl %>' type='application/pdf' width='100%' height='800px'/>
+                <p><a href='<%- ctx.post.contentUrl %>' target='_blank'>Open in new tab</a></p>
+            </div>
+
     <% } else { console.log(new Error('Unknown post type')); } %>
 
     <div class='post-overlay resize-listener'>
