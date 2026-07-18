@@ -38,6 +38,7 @@ class TagListController {
             hostNode: this._pageController.view.pageHeaderHolderNode,
             parameters: ctx.parameters,
             canEditTagCategories: api.hasPrivilege("tag_category_edit"),
+            canCreate: api.hasPrivilege("tag_create"),
         });
         this._headerView.addEventListener("navigate", (e) =>
             this._evtNavigate(e)

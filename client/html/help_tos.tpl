@@ -10,8 +10,8 @@ the Site.</p>
     content you have posted to the site.</li>
     <li>The Site reserves the right to change these Terms of Service without
     prior notice.</li>
-    <li>If you are a minor, then you will not use the Site.</li>
-    <li>You are using the Site only for personal use.</li>
+    <li>You will not abuse the Site's resources, including but not limited
+    to bandwidth and storage.
     <li>You will not spam, troll or offend anyone.</li>
     <li>You accept that the Site is not liable for any content that you may
     stumble upon.</li>
@@ -20,21 +20,26 @@ the Site.</p>
 <p class='section' id='section-prohibited-content'><strong>Prohibited content</strong></p>
 
 <ul>
-    <li>Child pornography: any photograph or photorealistic drawing or movie
-    that depicts children in a sexual manner. This includes nudity, explicit
-    sex, implied sex, or sexually persuasive positions.</li>
+    <li>NSFW/NSFL media: Any media which shows sexually explicit acts, as well as gore or
+    explicit harm to humans or animals.</li>
 
-    <li>Bestiality: any photograph or photorealistic drawing or movie that
-    depicts humans having sex (either explicit or implied) with other non-human
-    animals.</li>
+    <li>Leaked media: Any internal piece of media (documents, images, videos) that is not
+    intended to be public or which is not shared from official or permitted sources.</li>
 
-    <li>Any depiction of extreme mutilation, extreme bodily distension,
-    feces.</li>
+    <li>Media which you do not have the rights to upload or share.</li>
+
+    <li>Media that is unrelated to spaceflight in any way.</li>
 
     <li>Personal images: any image that is suspected to be uploaded for
     personal use. This includes, but is not limited to, avatars and forum
     signatures.</li>
 </ul>
+
+<p class='section' id='section-takedowns'><strong>Takedowns</strong></p>
+
+<p>If you are the original owner or license holder of media presented on this site,
+and you wish for it to be taken down, you can send an email to EMAILHERE to formally
+request a takedown.</p>
 
 <p class='section' id='section-privacy-policy'><strong>Privacy policy</strong></p>
 

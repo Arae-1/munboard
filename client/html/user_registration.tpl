@@ -51,6 +51,7 @@
             <li><i class='fa fa-star-half-o'></i> vote up/down on posts and comments</li>
         </ul>
         <hr/>
+        <p>Before making any posts, be sure to read the <a href='<%- ctx.formatClientLink('help', 'guidelines') %>'>Tagging guidelines</a>.</p>
         <p>By creating an account, you are agreeing to the <a href='<%- ctx.formatClientLink('help', 'tos') %>'>Terms of Service</a>.</p>
     </div>
 </div>

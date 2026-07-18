@@ -1,7 +1,7 @@
-<p>Szurubooru is an image board engine inspired by services such as Danbooru,
-Gelbooru and Moebooru. Its name <a href='http://sjp.pwn.pl/sjp/;2527372'>has
-its roots in Polish language and has onomatopeic meaning of scraping or
-scrubbing</a>. It is pronounced as <em>shoorubooru</em>.</p>
+<p>Munboard is a booru-style media board based on a modified form of the
+<a href="https://github.com/rr-/szurubooru">szurubooru</a> engine.
+It is designed for spaceflight related media,
+and can host images, videos, and PDF documents.</p>
 
 <p class='section'><strong>Registration</strong></p>
 

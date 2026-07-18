@@ -36,7 +36,11 @@
         </tr>
         <tr>
             <td><code>pool</code></td>
-            <td>belonging to the pool with the given name (accepts wildcards) or ID</td>
+            <td>belonging to the pool with the given name (accepts wildcards)</td>
+        </tr>
+        <tr>
+            <td><code>pool-id</code></td>
+            <td>belonging to the pool with the given ID</td>
         </tr>
         <tr>
             <td><code>pool-category</code></td>
@@ -72,7 +76,7 @@
         </tr>
         <tr>
             <td><code>type</code></td>
-            <td>type of posts (can be either <code>image</code>, <code>animation</code>, <code>flash</code>, or <code>video</code>)</td>
+            <td>type of posts (can be either <code>image</code>, <code>animation</code>, <code>flash</code>, or <code>video</code> or <code>document</code> (or <code>pdf</code>))</td>
         </tr>
         <tr>
             <td><code>content-checksum</code></td>
@@ -109,6 +113,22 @@
         <tr>
             <td><code>creation-date</code>, <code>creation-time</code>, <code>date</code>, <code>time</code></td>
             <td>posted at given date</td>
+        </tr>
+        <tr>
+            <td><code>launch-date</code></td>
+            <td>launched on given date</td>
+        </tr>
+        <tr>
+            <td><code>launch-time</code></td>
+            <td>alias of <code>launch-date</code></td>
+        </tr>
+        <tr>
+            <td><code>media-date</code></td>
+            <td>media created on given date</td>
+        </tr>
+        <tr>
+            <td><code>media-time</code></td>
+            <td>alias of <code>media-date</code></td>
         </tr>
         <tr>
             <td><code>last-edit-date</code>, <code>last-edit-time</code>, <code>edit-date</code>, <code>edit-time</code></td>
@@ -216,6 +236,22 @@
         <tr>
             <td><code>creation-date</code>, <code>creation-time</code>, <code>date</code>, <code>time</code></td>
             <td>newest to oldest (pretty much same as id)</td>
+        </tr>
+        <tr>
+            <td><code>launch-date</code></td>
+            <td>launch date, newest to oldest</td>
+        </tr>
+        <tr>
+            <td><code>launch-time</code></td>
+            <td>alias of <code>launch-date</code></td>
+        </tr>
+        <tr>
+            <td><code>media-date</code></td>
+            <td>media created date, newest to oldest</td>
+        </tr>
+        <tr>
+            <td><code>media-time</code></td>
+            <td>alias of <code>media-date</code></td>
         </tr>
         <tr>
             <td><code>last-edit-date</code>, <code>last-edit-time</code>, <code>edit-date</code>, <code>edit-time</code></td>

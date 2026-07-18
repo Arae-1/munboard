@@ -1,6 +1,7 @@
 <div class='content-wrapper transparent-container' id='home'>
     <div class='messages'></div>
-    <header>
+    <header class='home-header'>
+        <img src='img/logo.png' class='home-logo' alt=''/>
         <h1><%- ctx.name %></h1>
     </header>
     <% if (ctx.canListPosts) { %>

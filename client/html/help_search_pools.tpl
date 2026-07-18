@@ -11,6 +11,14 @@
             <td>having given name (accepts wildcards)</td>
         </tr>
         <tr>
+            <td><code>launch-date</code></td>
+            <td>launched on given date</td>
+        </tr>
+        <tr>
+            <td><code>launch-time</code></td>
+            <td>alias of <code>launch-date</code></td>
+        </tr>
+        <tr>
             <td><code>category</code></td>
             <td>having given category (accepts wildcards)</td>
         </tr>
@@ -40,6 +48,14 @@
         <tr>
             <td><code>name</code></td>
             <td>A to Z</td>
+        </tr>
+        <tr>
+            <td><code>launch-date</code></td>
+            <td>launch date, newest to oldest</td>
+        </tr>
+        <tr>
+            <td><code>launch-time</code></td>
+            <td>alias of <code>launch-date</code></td>
         </tr>
         <tr>
             <td><code>category</code></td>

@@ -69,7 +69,7 @@ name = "oxibooru"
 
 default_user_rank = "regular"
 
-enable_safety = true
+enable_safety = false
 
 # Don't make these more restrictive unless you want to annoy people
 # If you do customize them, make sure to update the instructions in the registration form template as well
@@ -87,15 +87,15 @@ user_create_any            = "administrator"
 user_list                  = "regular"
 user_view                  = "regular"
 user_edit_any_name         = "moderator"
-user_edit_any_pass         = "moderator"
-user_edit_any_email        = "moderator"
+user_edit_any_pass         = "administrator"
+user_edit_any_email        = "administrator"
 user_edit_any_avatar       = "moderator"
-user_edit_any_rank         = "moderator"
+user_edit_any_rank         = "administrator"
 user_edit_self_name        = "regular"
 user_edit_self_pass        = "regular"
 user_edit_self_email       = "regular"
 user_edit_self_avatar      = "regular"
-user_edit_self_rank        = "moderator" # one can't promote themselves or anyone to upper rank than their own
+user_edit_self_rank        = "administrator" # one can't promote themselves or anyone to upper rank than their own
 user_delete_any            = "administrator"
 user_delete_self           = "regular"
 
@@ -108,7 +108,7 @@ user_token_edit_self       = "regular"
 user_token_delete_any      = "administrator"
 user_token_delete_self     = "regular"
 
-post_create_anonymous      = "regular"
+post_create_anonymous      = "administrator"
 post_create_identified     = "regular"
 post_list                  = "anonymous"
 post_reverse_search        = "regular"
@@ -131,11 +131,11 @@ post_merge                 = "moderator"
 post_favorite              = "regular"
 post_bulk_edit_tag         = "power"
 post_bulk_edit_safety      = "power"
-post_bulk_edit_delete      = "power"
+post_bulk_edit_delete      = "administrator"
 
 tag_create                 = "regular"
 tag_edit_name              = "power"
-tag_edit_category          = "power"
+tag_edit_category          = "regular"
 tag_edit_description       = "power"
 tag_edit_implication       = "power"
 tag_edit_suggestion        = "power"
@@ -144,14 +144,14 @@ tag_view                   = "anonymous"
 tag_merge                  = "moderator"
 tag_delete                 = "moderator"
 
-tag_category_create        = "moderator"
-tag_category_edit_name     = "moderator"
-tag_category_edit_color    = "moderator"
-tag_category_edit_order    = "moderator"
+tag_category_create        = "administrator"
+tag_category_edit_name     = "administrator"
+tag_category_edit_color    = "administrator"
+tag_category_edit_order    = "administrator"
 tag_category_list          = "anonymous"
 tag_category_view          = "anonymous"
-tag_category_delete        = "moderator"
-tag_category_set_default   = "moderator"
+tag_category_delete        = "administrator"
+tag_category_set_default   = "administrator"
 
 pool_create                = "regular"
 pool_edit_name             = "power"

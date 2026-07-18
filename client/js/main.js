@@ -79,6 +79,7 @@ Promise.resolve()
             );
             controllers.push(require("./controllers/tag_controller.js"));
             controllers.push(require("./controllers/tag_list_controller.js"));
+            controllers.push(require("./controllers/tag_create_controller.js"));
             controllers.push(
                 require("./controllers/tag_categories_controller.js")
             );
