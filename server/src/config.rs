@@ -153,6 +153,7 @@ pub enum Action {
     PoolEditCategory,
     PoolEditDescription,
     PoolEditPost,
+    PoolEditLaunchDate,
     PoolList,
     PoolView,
     PoolMerge,

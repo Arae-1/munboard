@@ -122,6 +122,10 @@ class PoolEditView extends events.EventTarget {
                     posts: this._postsFieldNode
                         ? misc.splitByWhitespace(this._postsFieldNode.value)
                         : undefined,
+
+                    launchDate: this._launchDateFieldNode
+                        ? this._launchDateFieldNode.value
+                        : undefined,
                 },
             })
         );
@@ -145,6 +149,10 @@ class PoolEditView extends events.EventTarget {
 
     get _postsFieldNode() {
         return this._formNode.querySelector(".posts input");
+    }
+
+    get _launchDateFieldNode() {
+        return this._formNode.querySelector(".launch-date input");
     }
 }
 

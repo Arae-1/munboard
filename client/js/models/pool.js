@@ -59,6 +59,10 @@ class Pool extends events.EventTarget {
         return this._lastEditTime;
     }
 
+    get launchDate() {
+        return this._launchDate;
+    }
+
     set names(value) {
         this._names = value;
     }
@@ -69,6 +73,10 @@ class Pool extends events.EventTarget {
 
     set description(value) {
         this._description = value;
+    }
+
+    set launchDate(value) {
+        this._launchDate = value;
     }
 
     static fromResponse(response) {
@@ -98,6 +106,9 @@ class Pool extends events.EventTarget {
         }
         if (misc.arraysDiffer(this._posts, this._orig._posts)) {
             detail.posts = this._posts.map((post) => post.id);
+        }
+        if (this._launchDate !== this._orig._launchDate) {
+            detail.launchDate = this._launchDate;
         }
 
         let promise = this._id
@@ -167,6 +178,7 @@ class Pool extends events.EventTarget {
             _description: response.description,
             _creationTime: response.creationTime,
             _lastEditTime: response.lastEditTime,
+            _launchDate: response.launchDate,
             _postCount: response.postCount || 0,
         };
 

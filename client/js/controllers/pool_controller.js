@@ -49,6 +49,7 @@ class PoolController {
                         "pool_edit_description"
                     ),
                     canEditPosts: api.hasPrivilege("pool_edit_post"),
+                    canEditLaunchDate: api.hasPrivilege("pool_edit_launch_date"),
                     canMerge: api.hasPrivilege("pool_merge"),
                     canDelete: api.hasPrivilege("pool_delete"),
                     categories: categories,
@@ -107,6 +108,9 @@ class PoolController {
                     Post.fromResponse({ id: parseInt(postId) })
                 );
             }
+        }
+        if (e.detail.launchDate !== undefined && e.detail.launchDate !== null) {
+            e.detail.pool.launchDate = e.detail.launchDate;
         }
         e.detail.pool.save().then(
             () => {

@@ -47,6 +47,7 @@ diesel::table! {
         description -> Text,
         creation_time -> Timestamptz,
         last_edit_time -> Timestamptz,
+        launch_date -> Nullable<Timestamptz>,
     }
 }
 

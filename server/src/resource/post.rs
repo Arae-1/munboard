@@ -491,11 +491,12 @@ fn get_pools(conn: &mut PgConnection, posts: &[Post]) -> QueryResult<Vec<Vec<Mic
         .load(conn)?
         .into_iter()
         .collect();
-    let pool_descriptions: HashMap<i64, LargeString> = pool::table
-        .select((pool::id, pool::description))
+    let pool_data: HashMap<i64, (LargeString, Option<DateTime>)> = pool::table
+        .select((pool::id, pool::description, pool::launch_date))
         .filter(pool::id.eq_any(pool_ids))
         .load(conn)?
         .into_iter()
+        .map(|(id, description, launch_date)| (id, (description, launch_date)))
         .collect();
 
     Ok(pool_posts
@@ -504,12 +505,16 @@ fn get_pools(conn: &mut PgConnection, posts: &[Post]) -> QueryResult<Vec<Vec<Mic
         .map(|pools_on_post| {
             pools_on_post
                 .into_iter()
-                .map(|(pool_post, category_id, post_count)| MicroPool {
-                    id: pool_post.pool_id,
-                    names: Arc::clone(&names_map[&pool_post.pool_id]),
-                    category: category_names[&category_id].clone(),
-                    description: pool_descriptions[&pool_post.pool_id].clone(),
-                    post_count,
+                .map(|(pool_post, category_id, post_count)| {
+                    let (description, launch_date) = &pool_data[&pool_post.pool_id];
+                    MicroPool {
+                        id: pool_post.pool_id,
+                        names: Arc::clone(&names_map[&pool_post.pool_id]),
+                        category: category_names[&category_id].clone(),
+                        description: description.clone(),
+                        post_count,
+                        launch_date: *launch_date,
+                    }
                 })
                 .collect()
         })

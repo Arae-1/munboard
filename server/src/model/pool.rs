@@ -15,6 +15,7 @@ use diesel::{AsChangeset, Associations, Identifiable, Insertable, Queryable, Sel
 pub struct NewPool<'a> {
     pub category_id: i64,
     pub description: &'a str,
+    pub launch_date: Option<DateTime>,
 }
 
 #[derive(Clone, AsChangeset, Associations, Identifiable, Queryable, Selectable)]
@@ -27,6 +28,7 @@ pub struct Pool {
     pub description: LargeString,
     pub creation_time: DateTime,
     pub last_edit_time: DateTime,
+    pub launch_date: Option<DateTime>,
 }
 
 #[derive(Insertable)]

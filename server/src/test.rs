@@ -345,6 +345,8 @@ const POSTS: &[NewPost] = &[
         flags: PostFlags::new(),
         source: "starry_night.png",
         description: "0101100010",
+        launch_date: None,
+        media_created_date: None,
     },
     NewPost {
         user_id: Some(2),
@@ -359,6 +361,8 @@ const POSTS: &[NewPost] = &[
         flags: PostFlags::new(),
         source: "gif.gif",
         description: "",
+        launch_date: None,
+        media_created_date: None,
     },
     NewPost {
         user_id: Some(2),
@@ -373,6 +377,8 @@ const POSTS: &[NewPost] = &[
         flags: PostFlags::new(),
         source: "bmp.bmp",
         description: "",
+        launch_date: None,
+        media_created_date: None,
     },
     NewPost {
         user_id: Some(2),
@@ -387,6 +393,8 @@ const POSTS: &[NewPost] = &[
         flags: PostFlags::new(),
         source: "1_pixel.png",
         description: "description9000",
+        launch_date: None,
+        media_created_date: None,
     },
     NewPost {
         user_id: None,
@@ -401,6 +409,8 @@ const POSTS: &[NewPost] = &[
         flags: PostFlags::new_with(PostFlag::Sound),
         source: "mp4.mp4",
         description: "descriptor",
+        launch_date: None,
+        media_created_date: None,
     },
 ];
 
@@ -580,6 +590,7 @@ fn create_pools(conn: &mut PgConnection) -> QueryResult<()> {
         let new_pools = pools.iter().map(|_| NewPool {
             category_id,
             description: "",
+            launch_date: None,
         });
         for (new_pool, names) in new_pools.zip(*pools) {
             let pool_id = new_pool.insert_into(pool::table).returning(pool::id).get_result(conn)?;

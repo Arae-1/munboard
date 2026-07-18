@@ -20,4 +20,11 @@
         <%= ctx.makeMarkdown(ctx.pool.description || 'This pool has no description yet.') %>
         <p>This pool has <a href='<%- ctx.formatClientLink('posts', {query: 'pool:' + ctx.pool.searchableName}) %>'><%- ctx.pool.postCount %> post(s)</a>.</p>
     </section>
+
+    <% if (ctx.pool.launchDate) { %>
+        <section>
+            <b>Launch Date:</b>
+            <span><%- ctx.pool.launchDate.slice(0, 10) %></span>
+        </section>
+    <% } %>
 </div>

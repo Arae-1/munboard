@@ -28,6 +28,15 @@
                     }) %>
                 <% } %>
             </li>
+            <% if (ctx.canEditLaunchDate) { %>
+                <li class='launch-date'>
+                    <%= ctx.makeDateInput({
+                        text: 'Launch date (UTC)',
+                        name: 'launch-date',
+                        value: ctx.pool.launchDate ? ctx.pool.launchDate.slice(0, 10) : '',
+                    }) %>
+                </li>
+            <% } %>
             <li class='posts'>
                 <% if (ctx.canEditPosts) { %>
                     <%= ctx.makeTextInput({

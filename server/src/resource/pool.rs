@@ -9,11 +9,11 @@ use crate::search::preferences;
 use crate::string::{LargeString, SmallString};
 use crate::time::DateTime;
 use diesel::dsl::{exists, not};
+use serde_with::skip_serializing_none;
 use diesel::{
     BelongingToDsl, ExpressionMethods, GroupedBy, Identifiable, PgConnection, QueryDsl, QueryResult, RunQueryDsl,
 };
 use serde::Serialize;
-use serde_with::skip_serializing_none;
 use server_macros::non_nullable_options;
 use std::sync::Arc;
 use strum::EnumString;
@@ -34,6 +34,8 @@ pub struct MicroPool {
     pub description: LargeString,
     /// The number of posts the pool has.
     pub post_count: i64,
+    /// Launch date for the pool.
+    pub launch_date: Option<DateTime>,
 }
 
 #[derive(Clone, Copy, EnumString)]
@@ -48,6 +50,7 @@ pub enum Field {
     Names,
     Posts,
     PostCount,
+    LaunchDate,
 }
 
 impl From<Field> for u64 {
@@ -80,6 +83,8 @@ pub struct PoolInfo {
     posts: Option<Vec<MicroPost>>,
     /// The number of posts the pool has.
     post_count: Option<i64>,
+    /// Launch date for the pool.
+    launch_date: Option<Option<DateTime>>,
 }
 
 impl PoolInfo {
@@ -116,6 +121,7 @@ impl PoolInfo {
                 names: names.pop(),
                 posts: posts.pop(),
                 post_count: post_counts.pop(),
+                launch_date: fields[Field::LaunchDate].then_some(pool.launch_date),
             })
             .collect::<Vec<_>>();
         results.reverse();

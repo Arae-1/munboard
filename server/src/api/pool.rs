@@ -135,6 +135,7 @@ async fn get(
 
 /// Request body for creating a pool.
 #[derive(Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 struct PoolCreateBody {
     /// Pool names. Must match `pool_name_regex` from server's configuration.
     names: Vec<SmallString>,
@@ -142,6 +143,8 @@ struct PoolCreateBody {
     category: SmallString,
     /// Pool description.
     description: Option<LargeString>,
+    /// Launch date for the pool.
+    launch_date: Option<DateTime>,
     /// List of post IDs to include in the pool.
     posts: Option<Vec<i64>>,
 }
@@ -193,6 +196,7 @@ async fn create(
                 let pool: Pool = NewPool {
                     category_id,
                     description: body.description.as_deref().unwrap_or(""),
+                    launch_date: body.launch_date,
                 }
                 .insert_into(pool::table)
                 .get_result(conn)?;
@@ -205,6 +209,7 @@ async fn create(
 
                 let pool_data = SnapshotData {
                     description: body.description.unwrap_or_default(),
+                    launch_date: body.launch_date,
                     category,
                     names: body.names,
                     posts,
@@ -278,6 +283,7 @@ async fn merge(
 
 /// Request body for updating a pool.
 #[derive(Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 struct PoolUpdateBody {
     /// Resource version. See [versioning](#Versioning).
     version: DateTime,
@@ -285,6 +291,8 @@ struct PoolUpdateBody {
     category: Option<SmallString>,
     /// Pool description.
     description: Option<LargeString>,
+    /// Launch date for the pool.
+    launch_date: Option<DateTime>,
     /// Pool names. Must match `pool_name_regex` from server's configuration.
     names: Option<Vec<SmallString>>,
     /// List of post IDs. Replaces the previous list.
@@ -359,6 +367,11 @@ async fn update(
                     ctx.verify_privilege(Action::PoolEditDescription)?;
                     new_pool.description = description.clone();
                     new_snapshot_data.description = description;
+                }
+                if body.launch_date.is_some() {
+                    ctx.verify_privilege(Action::PoolEditLaunchDate)?;
+                    new_pool.launch_date = body.launch_date;
+                    new_snapshot_data.launch_date = body.launch_date;
                 }
                 if let Some(names) = body.names {
                     ctx.verify_privilege(Action::PoolEditName)?;

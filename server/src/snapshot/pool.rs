@@ -6,6 +6,7 @@ use crate::model::snapshot::NewSnapshot;
 use crate::schema::{pool_category, pool_name, pool_post};
 use crate::snapshot;
 use crate::string::{LargeString, SmallString};
+use crate::time::DateTime;
 use diesel::{ExpressionMethods, PgConnection, QueryDsl, QueryResult, RunQueryDsl};
 use serde::Serialize;
 use serde_json::json;
@@ -13,6 +14,7 @@ use serde_json::json;
 #[derive(Clone, Serialize)]
 pub struct SnapshotData {
     pub description: LargeString,
+    pub launch_date: Option<DateTime>,
     pub category: SmallString,
     pub names: Vec<SmallString>,
     pub posts: Vec<i64>,
@@ -35,6 +37,7 @@ impl SnapshotData {
 
         Ok(Self {
             description: pool.description,
+            launch_date: pool.launch_date,
             category,
             names,
             posts,
