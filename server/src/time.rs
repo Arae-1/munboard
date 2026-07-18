@@ -126,6 +126,21 @@ impl FromSql<Timestamptz, Pg> for DateTime {
 pub mod option_datetime {
     use super::*;
     use time::format_description::well_known::Rfc3339;
+    use time::format_description::FormatItem;
+    use time::macros::format_description;
+
+    const DATE_FORMAT: &[FormatItem<'static>] = format_description!("[year]-[month]-[day]");
+
+    fn parse_datetime(s: &str) -> Result<OffsetDateTime, time::error::Parse> {
+        if let Ok(dt) = OffsetDateTime::parse(s, &Rfc3339) {
+            return Ok(dt);
+        }
+        let date = time::Date::parse(s, &DATE_FORMAT).map_err(|_| {
+            // Return the Rfc3339 error for consistency
+            OffsetDateTime::parse(s, &Rfc3339).unwrap_err()
+        })?;
+        Ok(date.midnight().assume_utc())
+    }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<DateTime>, D::Error>
     where
@@ -134,7 +149,7 @@ pub mod option_datetime {
         let s = Option::<String>::deserialize(deserializer)?;
         match s.as_deref() {
             None | Some("") => Ok(None),
-            Some(s) => OffsetDateTime::parse(s, &Rfc3339)
+            Some(s) => parse_datetime(s)
                 .map(|dt| Some(DateTime(dt)))
                 .map_err(de::Error::custom),
         }
