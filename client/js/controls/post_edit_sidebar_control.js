@@ -450,11 +450,11 @@ class PostEditSidebarControl extends events.EventTarget {
                         : undefined,
 
                     launchDate: this._launchDateInputNode
-                        ? this._launchDateInputNode.value
+                        ? this._launchDateInputNode.value || null
                         : undefined,
 
                     mediaCreatedDate: this._mediaDateInputNode
-                        ? this._mediaDateInputNode.value
+                        ? this._mediaDateInputNode.value || null
                         : undefined,
 
                     description: (api.hasPrivilege("post_edit_description") && this._descriptionTextareaNode)

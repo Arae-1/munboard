@@ -124,7 +124,7 @@ class PoolEditView extends events.EventTarget {
                         : undefined,
 
                     launchDate: this._launchDateFieldNode
-                        ? this._launchDateFieldNode.value
+                        ? this._launchDateFieldNode.value || null
                         : undefined,
                 },
             })
