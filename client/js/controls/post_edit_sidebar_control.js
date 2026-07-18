@@ -32,7 +32,7 @@ class PostEditSidebarControl extends events.EventTarget {
                 enableSafety: api.safetyEnabled(),
                 hasClipboard: document.queryCommandSupported("copy"),
                 canEditPostSafety: api.hasPrivilege("post_edit_safety"),
-                canEditPostLaunchDate: api.hasPrivilege("post_edit_launch_date"),
+                canEditPostInfoDates: api.hasPrivilege("post_edit_info_dates"),
                 canEditPostSource: api.hasPrivilege("post_edit_source"),
                 canEditPostTags: api.hasPrivilege("post_edit_tag"),
                 canEditPostRelations: api.hasPrivilege("post_edit_relation"),
@@ -57,7 +57,7 @@ class PostEditSidebarControl extends events.EventTarget {
             "post-info",
             "Basic info",
             this._hostNode.querySelectorAll(
-                ".safety, .relations, .flags, .post-source"
+                ".safety, .relations, .flags, .post-source, .post-launch-date, .post-media-date"
             )
         );
         this._tagsExpander = new ExpanderControl(
@@ -453,6 +453,10 @@ class PostEditSidebarControl extends events.EventTarget {
                         ? this._launchDateInputNode.value
                         : undefined,
 
+                    mediaCreatedDate: this._mediaDateInputNode
+                        ? this._mediaDateInputNode.value
+                        : undefined,
+
                     description: (api.hasPrivilege("post_edit_description") && this._descriptionTextareaNode)
                         ? this._descriptionTextareaNode.value
                         : undefined,
@@ -529,6 +533,10 @@ class PostEditSidebarControl extends events.EventTarget {
 
     get _launchDateInputNode() {
         return this._formNode.querySelector(".post-launch-date input");
+    }
+
+    get _mediaDateInputNode() {
+        return this._formNode.querySelector(".post-media-date input");
     }
 
     get _featureLinkNode() {

@@ -82,6 +82,10 @@ class Post extends events.EventTarget {
         return this._launchDate;
     }
 
+    get mediaCreatedDate() {
+        return this._mediaCreatedDate;
+    }
+
     get sourceSplit() {
         return this._source.split("\n").filter((s) => s);
     }
@@ -194,6 +198,10 @@ class Post extends events.EventTarget {
         this._launchDate = value;
     }
 
+    set mediaCreatedDate(value) {
+        this._mediaCreatedDate = value;
+    }
+
     static fromResponse(response) {
         const ret = new Post();
         ret._updateFromResponse(response);
@@ -302,6 +310,9 @@ class Post extends events.EventTarget {
         }
         if (this._launchDate !== this._orig._launchDate) {
             detail.launchDate = this._launchDate;
+        }
+        if (this._mediaCreatedDate !== this._orig._mediaCreatedDate) {
+            detail.mediaCreatedDate = this._mediaCreatedDate;
         }
         if (this._description !== this._orig._description) {
             detail.description = this._description;
@@ -510,6 +521,7 @@ class Post extends events.EventTarget {
             _thumbnailUrl: response.thumbnailUrl,
             _source: response.source,
             _launchDate: response.launchDate,
+            _mediaCreatedDate: response.mediaCreatedDate,
             _canvasWidth: response.canvasWidth,
             _canvasHeight: response.canvasHeight,
             _fileSize: response.fileSize,

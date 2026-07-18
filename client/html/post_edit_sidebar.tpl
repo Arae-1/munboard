@@ -67,12 +67,19 @@
             </section>
         <% } %>
 
-        <% if (ctx.canEditPostLaunchDate) { %>
+        <% if (ctx.canEditPostInfoDates) { %>
             <section class='post-launch-date'>
                 <%= ctx.makeDateInput({
                     text: 'Launch date (UTC)',
                     name: 'launch-date',
                     value: ctx.post.launchDate ? ctx.post.launchDate.slice(0, 10) : '',
+                }) %>
+            </section>
+            <section class='post-media-date'>
+                <%= ctx.makeDateInput({
+                    text: 'Media created date (UTC)',
+                    name: 'media-date',
+                    value: ctx.post.mediaCreatedDate ? ctx.post.mediaCreatedDate.slice(0, 10) : '',
                 }) %>
             </section>
         <% } %>

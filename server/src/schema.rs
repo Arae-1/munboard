@@ -110,6 +110,7 @@ diesel::table! {
         generated_thumbnail_size -> Int8,
         custom_thumbnail_size -> Int8,
         launch_date -> Nullable<Timestamptz>,
+        media_created_date -> Nullable<Timestamptz>,
         description -> Text,
     }
 }

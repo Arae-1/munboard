@@ -103,6 +103,7 @@ pub enum Field {
     Source,
     Description,
     LaunchDate,
+    MediaCreatedDate,
     CreationTime,
     LastEditTime,
     ContentUrl,
@@ -170,6 +171,8 @@ pub struct PostInfo {
     description: Option<LargeString>,
     /// Launch date for the post.
     launch_date: Option<Option<DateTime>>,
+    /// Media creation date for the post.
+    media_created_date: Option<Option<DateTime>>,
     /// Time the tag was created.
     creation_time: Option<DateTime>,
     /// Time the tag was last edited.
@@ -274,6 +277,7 @@ impl PostInfo {
                 source: fields[Field::Source].then_some(post.source),
                 description: fields[Field::Description].then_some(post.description),
                 launch_date: fields[Field::LaunchDate].then_some(post.launch_date),
+                media_created_date: fields[Field::MediaCreatedDate].then_some(post.media_created_date),
                 creation_time: fields[Field::CreationTime].then_some(post.creation_time),
                 last_edit_time: fields[Field::LastEditTime].then_some(post.last_edit_time),
                 content_url: content_urls.pop(),

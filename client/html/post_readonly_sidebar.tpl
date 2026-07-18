@@ -17,9 +17,12 @@
                     'video/mp4': 'MPEG-4',
                     'video/quicktime': 'MOV',
                     'application/x-shockwave-flash': 'SWF',
+                    'application/pdf': 'PDF',
                 }[ctx.post.mimeType] %><!--
             --></a>
-            (<%- ctx.post.canvasWidth %>x<%- ctx.post.canvasHeight %>)
+            <% if (ctx.post.type !== 'document') { %>
+                (<%- ctx.post.canvasWidth %>x<%- ctx.post.canvasHeight %>)
+            <% } %>
             <% if (ctx.post.flags.length) { %><!--
                 --><% if (ctx.post.flags.includes('loop')) { %><i class='fa fa-repeat'></i><% } %><!--
                 --><% if (ctx.post.flags.includes('sound')) { %><i class='fa fa-volume-up'></i><% } %>
@@ -38,12 +41,14 @@
             </section>
         <% } %>
 
-        <section class='zoom'>
-            <a href class='fit-original'>Original zoom</a> &middot;
-            <a href class='fit-width'>fit width</a> &middot;
-            <a href class='fit-height'>height</a> &middot;
-            <a href class='fit-both'>both</a>
-        </section>
+        <% if (ctx.post.type !== 'document') { %>
+            <section class='zoom'>
+                <a href class='fit-original'>Original zoom</a> &middot;
+                <a href class='fit-width'>fit width</a> &middot;
+                <a href class='fit-height'>height</a> &middot;
+                <a href class='fit-both'>both</a>
+            </section>
+        <% } %>
 
         <% if (ctx.post.source) { %>
             <section class='source'>
@@ -54,18 +59,12 @@
             </section>
         <% } %>
 
-        <% if (ctx.post.launchDate) { %>
-            <section class='launch-date'>
-                Launch date: <%- ctx.post.launchDate.slice(0, 10) %>
+        <% if (ctx.post.type !== 'document') { %>
+            <section class='search'>
+                Search on
+                <a href='https://lens.google.com/uploadbyurl?url=<%- encodeURIComponent(ctx.post.fullContentUrl) %>'>Google Images</a>
             </section>
         <% } %>
-
-        <section class='search'>
-            Search on
-            <a href='http://iqdb.org/?url=<%- encodeURIComponent(ctx.post.fullContentUrl) %>'>IQDB</a> &middot;
-            <a href='https://danbooru.donmai.us/posts?tags=md5:<%- ctx.post.checksumMD5 %>'>Danbooru</a> &middot;
-            <a href='https://lens.google.com/uploadbyurl?url=<%- encodeURIComponent(ctx.post.fullContentUrl) %>'>Google Images</a>
-        </section>
 
         <section class='social'>
             <div class='score-container'></div>
@@ -122,4 +121,15 @@
             </p>
         <% } %>
     </nav>
+    <% if (ctx.post.launchDate) { %>
+        <section class='launch-date'>
+            <b>Launch date:</b> <%- ctx.post.launchDate.slice(0, 10) %>
+        </section>
+    <% } %>
+
+    <% if (ctx.post.mediaCreatedDate) { %>
+        <section class='media-date'>
+            <b>Media created:</b> <%- ctx.post.mediaCreatedDate.slice(0, 10) %>
+        </section>
+    <% } %>
 </div>

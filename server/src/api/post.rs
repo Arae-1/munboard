@@ -628,6 +628,7 @@ async fn create_impl(ctx: Ctx, params: ResourceParams<Field>, body: PostCreateBo
                 source: body.source.as_deref().unwrap_or(""),
                 description: body.description.as_deref().unwrap_or(""),
                 launch_date: body.launch_date,
+                media_created_date: body.media_created_date,
             }
             .insert_into(post::table)
             .on_conflict(post::checksum)
@@ -668,6 +669,7 @@ async fn create_impl(ctx: Ctx, params: ResourceParams<Field>, body: PostCreateBo
                 source: post.source,
                 description: post.description,
                 launch_date: post.launch_date,
+                media_created_date: post.media_created_date,
                 tags,
                 relations,
                 notes,
@@ -706,6 +708,8 @@ struct PostCreateBody {
     description: Option<String>,
     /// Launch date for the post.
     launch_date: Option<DateTime>,
+    /// Media creation date for the post.
+    media_created_date: Option<DateTime>,
     /// IDs of related posts.
     relations: Option<Vec<i64>>,
     /// If true, the uploader name won't be recorded.
@@ -1000,10 +1004,16 @@ async fn update_impl(
                 new_snapshot_data.description = description;
             }
             if body.launch_date.is_some() {
-                ctx.verify_privilege(Action::PostEditLaunchDate)?;
+                ctx.verify_privilege(Action::PostEditInfoDates)?;
 
                 new_post.launch_date = body.launch_date;
                 new_snapshot_data.launch_date = body.launch_date;
+            }
+            if body.media_created_date.is_some() {
+                ctx.verify_privilege(Action::PostEditInfoDates)?;
+
+                new_post.media_created_date = body.media_created_date;
+                new_snapshot_data.media_created_date = body.media_created_date;
             }
             if let Some(mut relations) = body.relations {
                 ctx.verify_privilege(Action::PostEditRelation)?;
@@ -1093,6 +1103,8 @@ struct PostUpdateBody {
     description: Option<LargeString>,
     /// Launch date for the post.
     launch_date: Option<DateTime>,
+    /// Media creation date for the post.
+    media_created_date: Option<DateTime>,
     /// IDs of related posts.
     relations: Option<Vec<i64>>,
     /// Tags to apply. Non-existent tags will be created automatically.
