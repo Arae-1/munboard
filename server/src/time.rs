@@ -3,6 +3,7 @@ use diesel::expression::AsExpression;
 use diesel::pg::{Pg, PgValue};
 use diesel::serialize::{self, Output, ToSql};
 use diesel::sql_types::Timestamptz;
+use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut};
 use time::error::ComponentRange;
@@ -119,5 +120,23 @@ impl ToSql<Timestamptz, Pg> for DateTime {
 impl FromSql<Timestamptz, Pg> for DateTime {
     fn from_sql(value: PgValue<'_>) -> deserialize::Result<Self> {
         OffsetDateTime::from_sql(value).map(DateTime)
+    }
+}
+
+pub mod option_datetime {
+    use super::*;
+    use time::format_description::well_known::Rfc3339;
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<DateTime>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = Option::<String>::deserialize(deserializer)?;
+        match s.as_deref() {
+            None | Some("") => Ok(None),
+            Some(s) => OffsetDateTime::parse(s, &Rfc3339)
+                .map(|dt| Some(DateTime(dt)))
+                .map_err(de::Error::custom),
+        }
     }
 }

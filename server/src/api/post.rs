@@ -707,8 +707,10 @@ struct PostCreateBody {
     /// Post description.
     description: Option<String>,
     /// Launch date for the post.
+    #[serde(deserialize_with = "crate::time::option_datetime::deserialize")]
     launch_date: Option<DateTime>,
     /// Media creation date for the post.
+    #[serde(deserialize_with = "crate::time::option_datetime::deserialize")]
     media_created_date: Option<DateTime>,
     /// IDs of related posts.
     relations: Option<Vec<i64>>,
@@ -1102,8 +1104,10 @@ struct PostUpdateBody {
     /// Post description.
     description: Option<LargeString>,
     /// Launch date for the post.
+    #[serde(deserialize_with = "crate::time::option_datetime::deserialize")]
     launch_date: Option<DateTime>,
     /// Media creation date for the post.
+    #[serde(deserialize_with = "crate::time::option_datetime::deserialize")]
     media_created_date: Option<DateTime>,
     /// IDs of related posts.
     relations: Option<Vec<i64>>,
