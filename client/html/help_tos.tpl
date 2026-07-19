@@ -38,7 +38,7 @@ the Site.</p>
 <p class='section' id='section-takedowns'><strong>Takedowns</strong></p>
 
 <p>If you are the original owner or license holder of media presented on this site,
-and you wish for it to be taken down, you can send an email to EMAILHERE to formally
+and you wish for it to be taken down, you can send an email to takedowns@example.com to formally
 request a takedown.</p>
 
 <p class='section' id='section-privacy-policy'><strong>Privacy policy</strong></p>
