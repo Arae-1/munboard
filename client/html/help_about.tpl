@@ -1,5 +1,5 @@
 <p>Munboard is a booru-style media board based on a modified form of the
-<a href="https://github.com/rr-/szurubooru">szurubooru</a> engine.
+<a href="https://github.com/liamw1/oxibooru">oxibooru</a> engine.
 It is designed for spaceflight related media,
 and can host images, videos, and PDF documents.</p>
 
