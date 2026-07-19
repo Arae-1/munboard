@@ -12,6 +12,15 @@ function decamelize(str, sep) {
         .toLowerCase();
 }
 
+// Converts a date-only string (YYYY-MM-DD) from a <input type="date"> to an
+// RFC 3339 UTC datetime string the API expects. Empty/invalid input -> null.
+function dateToRfc3339(dateStr) {
+    if (!dateStr) {
+        return null;
+    }
+    return `${dateStr}T00:00:00Z`;
+}
+
 function* range(start = 0, end = null, step = 1) {
     if (end === null) {
         end = start;
@@ -243,6 +252,7 @@ module.exports = {
     splitByWhitespace: splitByWhitespace,
     arraysDiffer: arraysDiffer,
     decamelize: decamelize,
+    dateToRfc3339: dateToRfc3339,
     escapeSearchTerm: escapeSearchTerm,
     dataURItoBlob: dataURItoBlob,
     getPrettyName: getPrettyName,

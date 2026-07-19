@@ -144,7 +144,6 @@ struct PoolCreateBody {
     /// Pool description.
     description: Option<LargeString>,
     /// Launch date for the pool.
-    #[serde(deserialize_with = "crate::time::option_datetime::deserialize")]
     launch_date: Option<DateTime>,
     /// List of post IDs to include in the pool.
     posts: Option<Vec<i64>>,
@@ -293,7 +292,6 @@ struct PoolUpdateBody {
     /// Pool description.
     description: Option<LargeString>,
     /// Launch date for the pool.
-    #[serde(deserialize_with = "crate::time::option_datetime::deserialize")]
     launch_date: Option<DateTime>,
     /// Pool names. Must match `pool_name_regex` from server's configuration.
     names: Option<Vec<SmallString>>,
