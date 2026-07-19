@@ -28,7 +28,7 @@ use diesel::{
     ExpressionMethods, Insertable, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl, SaveChangesDsl,
     SelectableHelper,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::sync::{Arc, LazyLock};
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::info;
@@ -1003,17 +1003,17 @@ async fn update_impl(
                 new_post.description = description.clone();
                 new_snapshot_data.description = description;
             }
-            if body.launch_date.is_some() {
+            if let Some(launch_date) = body.launch_date {
                 ctx.verify_privilege(Action::PostEditInfoDates)?;
 
-                new_post.launch_date = body.launch_date;
-                new_snapshot_data.launch_date = body.launch_date;
+                new_post.launch_date = launch_date;
+                new_snapshot_data.launch_date = launch_date;
             }
-            if body.media_created_date.is_some() {
+            if let Some(media_created_date) = body.media_created_date {
                 ctx.verify_privilege(Action::PostEditInfoDates)?;
 
-                new_post.media_created_date = body.media_created_date;
-                new_snapshot_data.media_created_date = body.media_created_date;
+                new_post.media_created_date = media_created_date;
+                new_snapshot_data.media_created_date = media_created_date;
             }
             if let Some(mut relations) = body.relations {
                 ctx.verify_privilege(Action::PostEditRelation)?;
@@ -1089,6 +1089,10 @@ async fn update_impl(
         .map(Json)
 }
 
+fn deserialize_clearable_date<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Option<DateTime>>, D::Error> {
+    Ok(Some(Option::<DateTime>::deserialize(d)?))
+}
+
 /// Request body for updating a post.
 #[derive(Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -1101,10 +1105,14 @@ struct PostUpdateBody {
     source: Option<LargeString>,
     /// Post description.
     description: Option<LargeString>,
-    /// Launch date for the post.
-    launch_date: Option<DateTime>,
-    /// Media creation date for the post.
-    media_created_date: Option<DateTime>,
+    /// Launch date for the post. Send `null` to clear.
+    #[serde(default, deserialize_with = "deserialize_clearable_date")]
+    #[schema(value_type = Option<DateTime>)]
+    launch_date: Option<Option<DateTime>>,
+    /// Media creation date for the post. Send `null` to clear.
+    #[serde(default, deserialize_with = "deserialize_clearable_date")]
+    #[schema(value_type = Option<DateTime>)]
+    media_created_date: Option<Option<DateTime>>,
     /// IDs of related posts.
     relations: Option<Vec<i64>>,
     /// Tags to apply. Non-existent tags will be created automatically.

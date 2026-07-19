@@ -16,7 +16,7 @@ use crate::time::DateTime;
 use crate::{api, snapshot, update};
 use diesel::dsl::exists;
 use diesel::{ExpressionMethods, Insertable, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl, SaveChangesDsl};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::sync::Arc;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
@@ -281,6 +281,10 @@ async fn merge(
         .map(Json)
 }
 
+fn deserialize_clearable_date<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Option<DateTime>>, D::Error> {
+    Ok(Some(Option::<DateTime>::deserialize(d)?))
+}
+
 /// Request body for updating a pool.
 #[derive(Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -291,8 +295,10 @@ struct PoolUpdateBody {
     category: Option<SmallString>,
     /// Pool description.
     description: Option<LargeString>,
-    /// Launch date for the pool.
-    launch_date: Option<DateTime>,
+    /// Launch date for the pool. Send `null` to clear.
+    #[serde(default, deserialize_with = "deserialize_clearable_date")]
+    #[schema(value_type = Option<DateTime>)]
+    launch_date: Option<Option<DateTime>>,
     /// Pool names. Must match `pool_name_regex` from server's configuration.
     names: Option<Vec<SmallString>>,
     /// List of post IDs. Replaces the previous list.
@@ -368,10 +374,10 @@ async fn update(
                     new_pool.description = description.clone();
                     new_snapshot_data.description = description;
                 }
-                if body.launch_date.is_some() {
+                if let Some(launch_date) = body.launch_date {
                     ctx.verify_privilege(Action::PoolEditLaunchDate)?;
-                    new_pool.launch_date = body.launch_date;
-                    new_snapshot_data.launch_date = body.launch_date;
+                    new_pool.launch_date = launch_date;
+                    new_snapshot_data.launch_date = launch_date;
                 }
                 if let Some(names) = body.names {
                     ctx.verify_privilege(Action::PoolEditName)?;

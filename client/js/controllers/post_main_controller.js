@@ -210,10 +210,10 @@ class PostMainController extends BasePostController {
         if (e.detail.source !== undefined && e.detail.source !== null) {
             post.source = e.detail.source;
         }
-        if (e.detail.launchDate !== undefined && e.detail.launchDate !== null) {
+        if (e.detail.launchDate !== undefined) {
             post.launchDate = e.detail.launchDate;
         }
-        if (e.detail.mediaCreatedDate !== undefined && e.detail.mediaCreatedDate !== null) {
+        if (e.detail.mediaCreatedDate !== undefined) {
             post.mediaCreatedDate = e.detail.mediaCreatedDate;
         }
         if (e.detail.description !== undefined) {

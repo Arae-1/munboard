@@ -109,7 +109,7 @@ class PoolController {
                 );
             }
         }
-        if (e.detail.launchDate !== undefined && e.detail.launchDate !== null) {
+        if (e.detail.launchDate !== undefined) {
             e.detail.pool.launchDate = e.detail.launchDate;
         }
         e.detail.pool.save().then(
