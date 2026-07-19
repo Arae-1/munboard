@@ -23,6 +23,7 @@ function _mimeTypeToPostType(mimeType) {
             "video/mp4": "video",
             "video/webm": "video",
             "video/quicktime": "video",
+            "application/pdf": "pdf",
         }[mimeType] || "unknown"
     );
 }
@@ -123,6 +124,7 @@ class Url extends Uploadable {
             mp4: "video/mp4",
             mov: "video/quicktime",
             webm: "video/webm",
+            pdf: "application/pdf",
         };
         for (let extension of Object.keys(mime)) {
             if (this.url.toLowerCase().indexOf("." + extension) !== -1) {
@@ -165,7 +167,7 @@ class PostUploadView extends events.EventTarget {
             this._contentInputNode,
             {
                 extraText:
-                    "Allowed extensions: .jpg, .png, .gif, .webm, .mp4, .swf, .avif, .heif, .heic",
+                    "Allowed extensions: .jpg, .png, .gif, .webm, .mp4, .swf, .avif, .heif, .heic, .pdf",
                 allowUrls: true,
                 allowMultiple: true,
                 lock: false,
