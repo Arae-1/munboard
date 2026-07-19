@@ -1,6 +1,7 @@
 "use strict";
 
 const events = require("../events.js");
+const accent = require("../util/accent.js");
 
 const defaultSettings = {
     listPosts: {
@@ -26,11 +27,7 @@ class Settings extends events.EventTarget {
     constructor() {
         super();
         this.cache = this._getFromLocalStorage();
-        this._applyAccentColor(this.cache.accentColor);
-    }
-
-    _applyAccentColor(color) {
-        document.documentElement.style.setProperty("--accent-color", color);
+        accent.apply(this.cache.accentColor);
     }
 
     _getFromLocalStorage() {
@@ -51,7 +48,7 @@ class Settings extends events.EventTarget {
         } else {
             document.body.classList.remove("darktheme");
         }
-        this._applyAccentColor(newSettings.accentColor);
+        accent.apply(newSettings.accentColor);
         this.cache = this._getFromLocalStorage();
         if (silent !== true) {
             this.dispatchEvent(
