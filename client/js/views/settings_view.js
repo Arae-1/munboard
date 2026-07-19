@@ -47,6 +47,7 @@ class SettingsView extends events.EventTarget {
                         .checked,
                     darkTheme: this._find("dark-theme").checked,
                     postFlow: this._find("post-flow").checked,
+                    accentColor: this._find("accent-color").value,
                 },
             })
         );

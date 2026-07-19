@@ -1,5 +1,9 @@
-$main-color = #CEB526
+$main-color-static = #BC3736
+$main-color = var(--accent-color, $main-color-static)
 $window-color = white
+
+:root
+    --accent-color: #BC3736
 $window-color-darktheme = #1a1a1a
 $top-navigation-color = #F5F5F5
 $top-navigation-color-darktheme = #333333

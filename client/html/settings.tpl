@@ -89,6 +89,11 @@
                 }) %>
                 <p class='hint'>Display all underscores as if they were spaces. This is only a visual change, which means that you'll still have to use underscores when searching or editing tags.</p>
             </li>
+
+            <li class='accent-color-field'>
+                <label for='accent-color'>Accent color</label>
+                <input type='color' name='accent-color' value='<%- ctx.browsingSettings.accentColor %>'/>
+            </li>
         </ul>
 
         <div class='messages'></div>
