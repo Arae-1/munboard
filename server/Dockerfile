@@ -105,24 +105,29 @@ RUN readelf -d /opt/app/target/release/oxibooru_server | grep -q "NEEDED" \
   || echo "Binary is fully static"
 
 ################################# Run Phase ################################
-FROM scratch AS runtime
+FROM alpine:${ALPINE_VERSION} AS runtime
 ARG PUID=1000
 ARG PGID=1000
 ARG FFMPEG_VERSION
 WORKDIR /opt/app
 ENV RUST_BACKTRACE=full
 
-COPY --from=builder --chown=${PUID}:${PGID} /data /data
+# Install tools needed at runtime: poppler-utils for PDF thumbnail rendering
+RUN apk add --no-cache poppler-utils \
+  && mkdir -p /data \
+  && addgroup -g ${PGID} app \
+  && adduser -SDH -h /opt/app -g '' -G app -u ${PUID} app \
+  && chown -R app:app /opt/app /data
 
 # Copy SSL certs for outbound requests
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 # Copy binaries with ownership
-COPY --from=ffmpeg_builder --chown=${PUID}:${PGID} /build/ffmpeg-${FFMPEG_VERSION}/ffmpeg /opt/app/ffmpeg
-COPY --from=builder --chown=${PUID}:${PGID} /opt/app/target/release/oxibooru_server /opt/app/server
+COPY --from=ffmpeg_builder --chown=app:app /build/ffmpeg-${FFMPEG_VERSION}/ffmpeg /opt/app/ffmpeg
+COPY --from=builder --chown=app:app /opt/app/target/release/oxibooru_server /opt/app/server
 
 # Run it!
-USER ${PUID}:${PGID}
+USER app
 ENTRYPOINT ["/opt/app/server"]
 
 ENV SERVER_PORT=6666

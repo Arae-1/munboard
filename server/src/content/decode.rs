@@ -9,6 +9,7 @@ use image::{AnimationDecoder, DynamicImage, ImageDecoder, ImageFormat, ImageRead
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
+use std::process::Command;
 use swf::Tag;
 use tracing::error;
 
@@ -26,8 +27,7 @@ pub fn representative_image(config: &Config, file_path: &Path, mime_type: MimeTy
         MimeType::Swf => flash_image(config, file_path).and_then(|frame| frame.ok_or(ApiError::EmptySwf)),
         MimeType::Avif => ffmpeg_frame(file_path, PostType::Image)
             .and_then(|frame| frame.ok_or(ApiError::FfmpegError("Unable to decode AVIF image with FFmpeg".into()))),
-        MimeType::Pdf => ffmpeg_frame(file_path, PostType::Document)
-            .and_then(|frame| frame.ok_or(ApiError::EmptyVideo)),
+        MimeType::Pdf => pdf_representative_image(file_path),
         MimeType::Mov | MimeType::Mp4 | MimeType::Webm => {
             ffmpeg_frame(file_path, PostType::Video).and_then(|frame| frame.ok_or(ApiError::EmptyVideo))
         }
@@ -144,6 +144,27 @@ fn ffmpeg_frame(path: &Path, post_type: PostType) -> ApiResult<Option<DynamicIma
         }
     }
     Ok(None)
+}
+
+/// Renders the first page of a PDF as a PNG via pdftoppm (poppler).
+/// Falls back to a neutral 1x1 placeholder on any error so uploads never fail.
+fn pdf_representative_image(file_path: &Path) -> ApiResult<DynamicImage> {
+    let path_str = file_path.to_string_lossy();
+    // pdftoppm appends ".png" to the given prefix; render next to the source file.
+    let prefix = format!("{}.thumb", path_str);
+    let png_path = format!("{prefix}.png");
+
+    let status = Command::new("pdftoppm")
+        .args(["-png", "-singlefile", "-f", "1", "-l", "1", "-r", "100", &path_str, &prefix])
+        .status();
+
+    let result = match status {
+        Ok(s) if s.success() => image::open(&png_path)
+            .or_else(|_| Ok(DynamicImage::ImageRgb8(RgbImage::new(1, 1)))),
+        _ => Ok(DynamicImage::ImageRgb8(RgbImage::new(1, 1))),
+    };
+    let _ = std::fs::remove_file(&png_path);
+    result
 }
 
 /// Search swf tags for the largest decodable image
