@@ -121,6 +121,15 @@
             </p>
         <% } %>
     </nav>
+    <% if (ctx.post.pools.length) { %>
+        <section class='pools'>
+            <b>Pool:</b>
+            <a href='<%- ctx.formatClientLink('posts', {query: 'pool:' + ctx.post.pools.at(0).names[0]}) %>'>
+                <%- ctx.post.pools.at(0).names[0] %>
+            </a>
+        </section>
+    <% } %>
+
     <% if (ctx.post.launchDate) { %>
         <section class='launch-date'>
             <b>Launch date:</b> <%- ctx.post.launchDate.slice(0, 10) %>
