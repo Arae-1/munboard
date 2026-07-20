@@ -244,6 +244,7 @@ impl PostInfo {
         let mut comments = f.exec(Field::Comments, || get_comments(conn, ctx, &posts))?;
         let mut relations = f.exec(Field::Relations, || get_relations(conn, ctx, &posts))?;
         let mut pools = f.exec(Field::Pools, || get_pools(conn, &posts))?;
+        let mut pool_launch_dates = f.exec(Field::LaunchDate, || get_pool_launch_dates(conn, &posts))?;
         let mut notes = f.exec(Field::Notes, || get_notes(conn, &posts))?;
         let mut scores = f.exec(Field::Score, || post_stats!(conn, &posts, score, i64))?;
         let mut own_scores = f.exec(Field::OwnScore, || get_own_scores(conn, ctx.client, &posts))?;
@@ -276,7 +277,9 @@ impl PostInfo {
                 flags: fields[Field::Flags].then_some(post.flags),
                 source: fields[Field::Source].then_some(post.source),
                 description: fields[Field::Description].then_some(post.description),
-                launch_date: fields[Field::LaunchDate].then_some(post.launch_date),
+                launch_date: fields[Field::LaunchDate].then_some(
+                    post.launch_date.or(pool_launch_dates.pop().unwrap_or(None)),
+                ),
                 media_created_date: fields[Field::MediaCreatedDate].then_some(post.media_created_date),
                 creation_time: fields[Field::CreationTime].then_some(post.creation_time),
                 last_edit_time: fields[Field::LastEditTime].then_some(post.last_edit_time),
@@ -469,6 +472,26 @@ fn get_relations(conn: &mut PgConnection, ctx: &Context, posts: &[Post]) -> Quer
                 .collect()
         })
         .collect())
+}
+
+fn get_pool_launch_dates(conn: &mut PgConnection, posts: &[Post]) -> QueryResult<Vec<Option<DateTime>>> {
+    use crate::schema::pool;
+    use crate::schema::pool_post;
+
+    let pool_dates: Vec<(i64, Option<DateTime>)> = pool_post::table
+        .inner_join(pool::table)
+        .select((pool_post::post_id, pool::launch_date))
+        .filter(pool_post::post_id.eq_any(posts.iter().map(|p| p.id).collect::<Vec<_>>()))
+        .filter(pool::launch_date.is_not_null())
+        .order(pool_post::post_id)
+        .load(conn)?;
+
+    let mut map: HashMap<i64, Option<DateTime>> = HashMap::new();
+    for (post_id, date) in pool_dates {
+        map.entry(post_id).or_insert(date);
+    }
+
+    Ok(posts.iter().map(|p| map.get(&p.id).copied().flatten()).collect())
 }
 
 fn get_pools(conn: &mut PgConnection, posts: &[Post]) -> QueryResult<Vec<Vec<MicroPool>>> {

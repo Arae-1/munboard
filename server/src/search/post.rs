@@ -62,6 +62,16 @@ pub enum Token {
         serialize = "last-edit-time"
     )]
     LastEditTime,
+    #[strum(
+        serialize = "launch-date",
+        serialize = "launch-time"
+    )]
+    LaunchDate,
+    #[strum(
+        serialize = "media-date",
+        serialize = "media-time"
+    )]
+    MediaCreatedDate,
     Tag,
     TagCategory,
     Pool,
@@ -142,6 +152,8 @@ impl<'a> Builder<'a> for QueryBuilder<'a> {
                 Token::Description => Ok(apply_str_filter!(query, post::description, filter)),
                 Token::CreationTime => apply_time_filter!(query, post::creation_time, filter),
                 Token::LastEditTime => apply_time_filter!(query, post::last_edit_time, filter),
+                Token::LaunchDate => apply_time_filter!(query, post::launch_date, filter),
+                Token::MediaCreatedDate => apply_time_filter!(query, post::media_created_date, filter),
                 Token::Tag => apply_tag_filter(conn, query, nonmatching, filter, state),
                 Token::TagCategory => apply_tag_category_filter(conn, query, filter, state),
                 Token::Pool => apply_pool_filter(conn, query, filter, state),
@@ -197,6 +209,8 @@ impl<'a> Builder<'a> for QueryBuilder<'a> {
             Token::Description => apply_sort!(query, post::description, sort),
             Token::CreationTime => apply_sort!(query, post::creation_time, sort),
             Token::LastEditTime => apply_sort!(query, post::last_edit_time, sort),
+            Token::LaunchDate => apply_sort!(query, post::launch_date, sort),
+            Token::MediaCreatedDate => apply_sort!(query, post::media_created_date, sort),
             Token::Tag | Token::TagCount => apply_sort!(query, post_statistics::tag_count, sort),
             Token::Pool | Token::PoolCount => apply_sort!(query, post_statistics::pool_count, sort),
             Token::Uploader => apply_sort!(query, user::name, sort),
@@ -541,6 +555,8 @@ pub fn filter_table() -> TokenTable<&'static str> {
         _description: "*00*",
         _creation_time: "-2012",
         _last_edit_time: "2012",
+        _launch_date: "2020-01..2020-12",
+        _media_created_date: "2020-01..2020-12",
         _tag: "-plant,sky,tagme",
         _tag_category: "s*",
         _pool: "-2",
