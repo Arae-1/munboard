@@ -278,7 +278,7 @@ impl PostInfo {
                 source: fields[Field::Source].then_some(post.source),
                 description: fields[Field::Description].then_some(post.description),
                 launch_date: fields[Field::LaunchDate].then_some(
-                    post.launch_date.or(pool_launch_dates.pop().unwrap_or(None)),
+                    pool_launch_dates.pop().unwrap_or(None).or(post.launch_date),
                 ),
                 media_created_date: fields[Field::MediaCreatedDate].then_some(post.media_created_date),
                 creation_time: fields[Field::CreationTime].then_some(post.creation_time),
