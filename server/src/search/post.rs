@@ -152,7 +152,7 @@ impl<'a> Builder<'a> for QueryBuilder<'a> {
                 Token::Description => Ok(apply_str_filter!(query, post::description, filter)),
                 Token::CreationTime => apply_time_filter!(query, post::creation_time, filter),
                 Token::LastEditTime => apply_time_filter!(query, post::last_edit_time, filter),
-                Token::LaunchDate => apply_time_filter!(query, post::launch_date, filter),
+                Token::LaunchDate => apply_time_filter!(query, inherited_launch_date(), filter),
                 Token::MediaCreatedDate => apply_time_filter!(query, post::media_created_date, filter),
                 Token::Tag => apply_tag_filter(conn, query, nonmatching, filter, state),
                 Token::TagCategory => apply_tag_category_filter(conn, query, filter, state),
@@ -209,7 +209,7 @@ impl<'a> Builder<'a> for QueryBuilder<'a> {
             Token::Description => apply_sort!(query, post::description, sort),
             Token::CreationTime => apply_sort!(query, post::creation_time, sort),
             Token::LastEditTime => apply_sort!(query, post::last_edit_time, sort),
-            Token::LaunchDate => apply_sort!(query, post::launch_date, sort),
+            Token::LaunchDate => apply_sort!(query, inherited_launch_date(), sort),
             Token::MediaCreatedDate => apply_sort!(query, post::media_created_date, sort),
             Token::Tag | Token::TagCount => apply_sort!(query, post_statistics::tag_count, sort),
             Token::Pool | Token::PoolCount => apply_sort!(query, post_statistics::pool_count, sort),
@@ -536,6 +536,11 @@ fn apply_special_filter(
         }
     }??;
     Ok(query)
+}
+
+fn inherited_launch_date() -> diesel::expression::SqlLiteral<diesel::sql_types::Nullable<diesel::sql_types::Timestamptz>>
+{
+    diesel::dsl::sql("COALESCE((SELECT pool.launch_date FROM pool_post INNER JOIN pool ON pool.id = pool_post.pool_id WHERE pool_post.post_id = post.id AND pool.launch_date IS NOT NULL LIMIT 1), post.launch_date)")
 }
 
 #[cfg(test)]
