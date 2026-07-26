@@ -6,11 +6,14 @@ use diesel::{PgConnection, QueryResult};
 use serde_json::{Map, Value, json};
 use std::collections::HashSet;
 
+pub mod comment;
 pub mod pool;
 pub mod pool_category;
 pub mod post;
 pub mod tag;
 pub mod tag_category;
+pub mod user;
+pub mod user_token;
 
 /// Computes a diff between an `old` snapshot [`Value`] and a `new` snapshot [`Value`].
 pub fn value_diff(old: Value, new: Value) -> Option<Value> {

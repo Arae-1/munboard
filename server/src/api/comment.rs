@@ -4,12 +4,13 @@ use crate::api::{self, DeleteBody, PageParams, PagedResponse, RatingBody, Resour
 use crate::app::{AppState, Context};
 use crate::config::Action;
 use crate::extract::{Ctx, Json, Path, Query};
-use crate::model::comment::{NewComment, NewCommentScore};
+use crate::model::comment::{Comment, NewComment, NewCommentScore};
 use crate::model::enums::{ResourceType, Score};
 use crate::resource::comment::{CommentInfo, Field};
 use crate::schema::{comment, comment_score};
 use crate::search::comment::QueryBuilder;
 use crate::search::{Builder, preferences};
+use crate::snapshot;
 use crate::time::DateTime;
 use diesel::dsl::exists;
 use diesel::{ExpressionMethods, Insertable, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl};
@@ -158,15 +159,19 @@ async fn create(
 
     let comment = connection_pool
         .transaction(move |conn| {
-            let insert_result = NewComment {
-                user_id: ctx.client.id,
-                post_id: body.post_id,
-                text: &body.text,
-                creation_time: DateTime::now(),
-            }
-            .insert_into(comment::table)
-            .get_result(conn);
-            error::map_foreign_key_violation(insert_result, ResourceType::Post)
+            let comment = error::map_foreign_key_violation(
+                NewComment {
+                    user_id: ctx.client.id,
+                    post_id: body.post_id,
+                    text: &body.text,
+                    creation_time: DateTime::now(),
+                }
+                .insert_into(comment::table)
+                .get_result(conn),
+                ResourceType::Post,
+            )?;
+            snapshot::comment::creation_snapshot(conn, ctx.client, &comment)?;
+            Ok::<_, ApiError>(comment)
         })
         .await?;
     connection_pool
@@ -212,22 +217,23 @@ async fn update(
     let edit_any = ctx.config.privileges()[Action::CommentEditAny];
     connection_pool
         .transaction(move |conn| {
-            let (comment_owner, comment_version): (Option<i64>, DateTime) = comment::table
+            let old_comment: Comment = comment::table
                 .find(comment_id)
-                .select((comment::user_id, comment::last_edit_time))
                 .first(conn)
                 .optional()?
                 .ok_or(ApiError::NotFound(ResourceType::Comment))?;
-            api::verify_version(comment_version, body.version)?;
+            api::verify_version(old_comment.last_edit_time, body.version)?;
 
-            let client_owns_comment = client.id == comment_owner && comment_owner.is_some();
+            let client_owns_comment = client.id == old_comment.user_id && old_comment.user_id.is_some();
             let required_rank = if client_owns_comment { edit_own } else { edit_any };
             api::verify_privilege(client, required_rank)?;
 
-            diesel::update(comment::table.find(comment_id))
-                .set((comment::text.eq(body.text), comment::last_edit_time.eq(DateTime::now())))
-                .execute(conn)
-                .map_err(ApiError::from)
+            let new_comment: Comment = diesel::update(comment::table.find(comment_id))
+                .set((comment::text.eq(body.text.as_str()), comment::last_edit_time.eq(DateTime::now())))
+                .get_result(conn)?;
+
+            snapshot::comment::modification_snapshot(conn, client, &old_comment, &new_comment)?;
+            Ok::<_, ApiError>(())
         })
         .await?;
     connection_pool
@@ -310,15 +316,14 @@ async fn delete(
 ) -> ApiResult<Json<()>> {
     connection_pool
         .transaction(move |conn| {
-            let (comment_owner, comment_version): (Option<i64>, DateTime) = comment::table
+            let comment: Comment = comment::table
                 .find(comment_id)
-                .select((comment::user_id, comment::last_edit_time))
                 .first(conn)
                 .optional()?
                 .ok_or(ApiError::NotFound(ResourceType::Comment))?;
-            api::verify_version(comment_version, *client_version)?;
+            api::verify_version(comment.last_edit_time, *client_version)?;
 
-            let action = if ctx.client.id == comment_owner && comment_owner.is_some() {
+            let action = if ctx.client.id == comment.user_id && comment.user_id.is_some() {
                 Action::CommentDeleteOwn
             } else {
                 Action::CommentDeleteAny
@@ -326,6 +331,7 @@ async fn delete(
             ctx.verify_privilege(action)?;
 
             diesel::delete(comment::table.find(comment_id)).execute(conn)?;
+            snapshot::comment::deletion_snapshot(conn, ctx.client, &comment)?;
             Ok::<_, ApiError>(Json(()))
         })
         .await
@@ -349,17 +355,27 @@ fn verify_visibility(conn: &mut PgConnection, ctx: &Context, comment_id: i64) ->
 
 #[cfg(test)]
 mod test {
+    use crate::api;
     use crate::api::error::ApiResult;
+    use crate::auth::header;
     use crate::model::comment::Comment;
-    use crate::model::enums::{ResourceType, UserRank};
-    use crate::schema::{comment, comment_statistics, database_statistics, user, user_statistics};
+    use crate::model::enums::{ResourceOperation, ResourceType, UserRank};
+    use crate::model::snapshot::Snapshot;
+    use crate::schema::{comment, comment_statistics, database_statistics, snapshot, user, user_statistics};
     use crate::search::comment::Token;
     use crate::test::*;
     use crate::time::DateTime;
+    use axum::ServiceExt;
+    use axum::extract::Request;
+    use axum::http::header::AUTHORIZATION;
+    use axum_test::TestServer;
     use diesel::dsl::exists;
     use diesel::{ExpressionMethods, PgConnection, QueryDsl, QueryResult, RunQueryDsl, SelectableHelper};
+    use serde_json::{Value, json};
     use serial_test::{parallel, serial};
     use strum::IntoEnumIterator;
+    use tower::layer::Layer;
+    use tower_http::normalize_path::NormalizePathLayer;
 
     // Exclude fields that involve creation_time or last_edit_time
     const FIELDS: &str = "&fields=id,postId,text,user,score,ownScore";
@@ -551,6 +567,57 @@ mod test {
         verify_response_with_user(UserRank::Regular, "DELETE /comment/2", "comment/delete_another").await?;
 
         reset_sequence(ResourceType::Comment)?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn webhook_snapshots() -> ApiResult<()> {
+        let app_state = get_state();
+        let (router, _) = api::routes(app_state).split_for_parts();
+        let app = NormalizePathLayer::trim_trailing_slash().layer(router);
+        let server = TestServer::new(ServiceExt::<Request>::into_make_service(app))
+            .expect("Test server must be constructible");
+        let auth = header::basic_credentials_for("administrator", TEST_PASSWORD);
+
+        let body = json!({"text": "wh test", "postId": 3});
+        let response = server
+            .post("/comments")
+            .add_header(AUTHORIZATION, &auth)
+            .json(&body)
+            .await;
+        assert_eq!(response.status_code(), 200);
+        let comment_id: i64 = response.json::<Value>()["id"].as_i64().unwrap();
+
+        let mut conn = get_connection()?;
+        let snapshot: Snapshot = snapshot::table
+            .select(Snapshot::as_select())
+            .order(snapshot::id.desc())
+            .first(&mut conn)?;
+        assert_eq!(snapshot.operation, ResourceOperation::Created);
+        assert_eq!(snapshot.resource_type, ResourceType::Comment);
+        assert_eq!(snapshot.resource_id, comment_id.to_string().into());
+        assert_eq!(snapshot.data, json!({"text": "wh test", "post_id": 3}));
+
+        let dt: DateTime = comment::table
+            .find(comment_id)
+            .select(comment::last_edit_time)
+            .first(&mut conn)?;
+        let response = server
+            .delete(&format!("/comment/{}", comment_id))
+            .add_header(AUTHORIZATION, &auth)
+            .json(&json!({"version": dt}))
+            .await;
+        assert_eq!(response.status_code(), 200);
+
+        let snapshot: Snapshot = snapshot::table
+            .select(Snapshot::as_select())
+            .order(snapshot::id.desc())
+            .first(&mut conn)?;
+        assert_eq!(snapshot.operation, ResourceOperation::Deleted);
+        assert_eq!(snapshot.resource_type, ResourceType::Comment);
+        assert_eq!(snapshot.resource_id, comment_id.to_string().into());
+
         Ok(())
     }
 }

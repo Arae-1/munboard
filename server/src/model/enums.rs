@@ -434,7 +434,7 @@ impl FromSql<SmallInt, Pg> for Score {
     }
 }
 
-#[derive(Debug, Clone, Copy, EnumString, FromRepr, AsExpression, FromSqlRow, Serialize, ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, FromRepr, AsExpression, FromSqlRow, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 #[diesel(sql_type = SmallInt)]
 #[repr(i16)]
@@ -459,7 +459,7 @@ impl FromSql<SmallInt, Pg> for ResourceOperation {
     }
 }
 
-#[derive(Debug, Display, Clone, Copy, EnumString, FromRepr, AsExpression, FromSqlRow, Serialize, ToSchema)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, EnumString, FromRepr, AsExpression, FromSqlRow, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 #[diesel(sql_type = SmallInt)]

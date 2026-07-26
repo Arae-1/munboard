@@ -14,6 +14,7 @@ use crate::resource::user::{Field, UserInfo, Visibility};
 use crate::schema::{database_statistics, user};
 use crate::search::Builder;
 use crate::search::user::QueryBuilder;
+use crate::snapshot;
 use crate::string::SmallString;
 use crate::time::DateTime;
 use crate::{api, filesystem, update};
@@ -250,6 +251,8 @@ async fn create_impl(
                     update::user::avatar(conn, &ctx.config, user.id, &body.name, &avatar)?;
                 }
 
+                snapshot::user::creation_snapshot(conn, ctx.client, &user)?;
+
                 Ok::<_, ApiError>(user)
             }
         })
@@ -353,13 +356,13 @@ async fn update_impl(
         .transaction({
             let ctx = ctx.clone();
             move |conn| {
-                let (user_id, user_version): (i64, DateTime) = user::table
-                    .select((user::id, user::last_edit_time))
+                let old_user: User = user::table
                     .filter(user::name.eq(&username))
                     .first(conn)
                     .optional()?
                     .ok_or(ApiError::NotFound(ResourceType::User))?;
-                api::verify_version(user_version, body.version)?;
+                let user_id = old_user.id;
+                api::verify_version(old_user.last_edit_time, body.version)?;
 
                 let editing_self = ctx.client.id == Some(user_id);
                 let visibility = if editing_self {
@@ -459,9 +462,10 @@ async fn update_impl(
                         filesystem::move_file(&old_custom_avatar_path, &new_custom_avatar_path)?;
                     }
                 }
-                update::user::last_edit_time(conn, user_id)
-                    .map(|()| (user_id, visibility))
-                    .map_err(ApiError::from)
+                update::user::last_edit_time(conn, user_id)?;
+                let new_user: User = user::table.find(user_id).first(conn)?;
+                snapshot::user::modification_snapshot(conn, ctx.client, &old_user, &new_user)?;
+                Ok((user_id, visibility))
             }
         })
         .await?;
@@ -576,22 +580,22 @@ async fn delete(
 ) -> ApiResult<Json<()>> {
     connection_pool
         .transaction(move |conn| {
-            let (user_id, user_version): (i64, DateTime) = user::table
-                .select((user::id, user::last_edit_time))
+            let user: User = user::table
                 .filter(user::name.eq(username))
                 .first(conn)
                 .optional()?
                 .ok_or(ApiError::NotFound(ResourceType::User))?;
-            api::verify_version(user_version, *client_version)?;
+            api::verify_version(user.last_edit_time, *client_version)?;
 
-            let action = if ctx.client.id == Some(user_id) {
+            let action = if ctx.client.id == Some(user.id) {
                 Action::UserDeleteSelf
             } else {
                 Action::UserDeleteAny
             };
             ctx.verify_privilege(action)?;
 
-            diesel::delete(user::table.find(user_id)).execute(conn)?;
+            diesel::delete(user::table.find(user.id)).execute(conn)?;
+            snapshot::user::deletion_snapshot(conn, ctx.client, &user)?;
             Ok::<_, ApiError>(Json(()))
         })
         .await
@@ -599,17 +603,27 @@ async fn delete(
 
 #[cfg(test)]
 mod test {
+    use crate::api;
     use crate::api::error::ApiResult;
-    use crate::model::enums::{ResourceType, UserRank};
+    use crate::auth::header;
+    use crate::model::enums::{ResourceOperation, ResourceType, UserRank};
+    use crate::model::snapshot::Snapshot;
     use crate::model::user::User;
-    use crate::schema::{database_statistics, user, user_statistics};
+    use crate::schema::{database_statistics, snapshot, user, user_statistics};
     use crate::search::user::Token;
     use crate::test::*;
     use crate::time::DateTime;
+    use axum::ServiceExt;
+    use axum::extract::Request;
+    use axum::http::header::AUTHORIZATION;
+    use axum_test::TestServer;
     use diesel::dsl::exists;
     use diesel::{ExpressionMethods, PgConnection, QueryDsl, QueryResult, RunQueryDsl, SelectableHelper};
+    use serde_json::{Value, json};
     use serial_test::{parallel, serial};
     use strum::IntoEnumIterator;
+    use tower::layer::Layer;
+    use tower_http::normalize_path::NormalizePathLayer;
 
     // Exclude fields that involve creation_time or last_edit_time
     const FIELDS: &str = "&fields=name,email,rank,avatarStyle,avatarUrl,commentCount,uploadedPostCount,likedPostCount,dislikedPostCount,favoritePostCount";
@@ -803,5 +817,59 @@ mod test {
         // Test responses that attempt to access file outside temporary uploads directory
         verify_response("POST /users", "user/create_malicious_avatar_token").await?;
         verify_response("PUT /user/regular_user", "user/edit_malicious_avatar_token").await
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn webhook_snapshots() -> ApiResult<()> {
+        let app_state = get_state();
+        let (router, _) = api::routes(app_state).split_for_parts();
+        let app = NormalizePathLayer::trim_trailing_slash().layer(router);
+        let server = TestServer::new(ServiceExt::<Request>::into_make_service(app))
+            .expect("Test server must be constructible");
+        let auth = header::basic_credentials_for("administrator", TEST_PASSWORD);
+
+        let body = json!({"name": "wh_user", "password": "test_password", "rank": "regular"});
+        let response = server
+            .post("/users")
+            .add_header(AUTHORIZATION, &auth)
+            .json(&body)
+            .await;
+        assert_eq!(response.status_code(), 200);
+        let name: String = response.json::<Value>()["name"].as_str().unwrap().to_string();
+
+        let mut conn = get_connection()?;
+        let snapshot: Snapshot = snapshot::table
+            .select(Snapshot::as_select())
+            .order(snapshot::id.desc())
+            .first(&mut conn)?;
+        assert_eq!(snapshot.operation, ResourceOperation::Created);
+        assert_eq!(snapshot.resource_type, ResourceType::User);
+        assert_eq!(snapshot.resource_id, name.clone().into());
+        assert_eq!(
+            snapshot.data,
+            json!({"name": "wh_user", "email": null, "rank": "regular", "avatar_style": "gravatar"})
+        );
+
+        let dt: DateTime = user::table
+            .select(user::last_edit_time)
+            .filter(user::name.eq(&name))
+            .first(&mut conn)?;
+        let response = server
+            .delete(&format!("/user/{}", name))
+            .add_header(AUTHORIZATION, &auth)
+            .json(&json!({"version": dt}))
+            .await;
+        assert_eq!(response.status_code(), 200);
+
+        let snapshot: Snapshot = snapshot::table
+            .select(Snapshot::as_select())
+            .order(snapshot::id.desc())
+            .first(&mut conn)?;
+        assert_eq!(snapshot.operation, ResourceOperation::Deleted);
+        assert_eq!(snapshot.resource_type, ResourceType::User);
+        assert_eq!(snapshot.resource_id, name.clone().into());
+
+        Ok(())
     }
 }

@@ -4,19 +4,20 @@ use crate::api::{self, ResourceParams, UnpagedResponse};
 use crate::app::AppState;
 use crate::config::Action;
 use crate::extract::{Ctx, Json, Path, Query};
-use crate::model::enums::{AvatarStyle, ResourceType};
+use crate::model::enums::{AvatarStyle, ResourceOperation, ResourceType};
+use crate::model::snapshot::NewSnapshot;
 use crate::model::user::{NewUserToken, UserToken};
 use crate::resource::user::MicroUser;
 use crate::resource::user_token::{Field, UserTokenInfo};
 use crate::schema::{user, user_token};
+use crate::snapshot;
 use crate::string::{LargeString, SmallString};
 use crate::time::DateTime;
-use diesel::dsl::sql;
-use diesel::sql_types::Integer;
 use diesel::{
     BoolExpressionMethods, ExpressionMethods, Insertable, OptionalExtension, QueryDsl, RunQueryDsl, SaveChangesDsl,
 };
 use serde::Deserialize;
+use serde_json::json;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
@@ -160,6 +161,7 @@ async fn create(
                 }
                 .insert_into(user_token::table)
                 .get_result(conn)?;
+                snapshot::user_token::creation_snapshot(conn, ctx.client, &user_token)?;
                 Ok::<_, ApiError>((user_token, avatar_style))
             }
         })
@@ -239,6 +241,12 @@ async fn update(
                     .ok_or(ApiError::NotFound(ResourceType::UserToken))?;
                 api::verify_version(user_token.last_edit_time, body.version)?;
 
+                let old_data = json!({
+                    "note": user_token.note,
+                    "enabled": user_token.enabled,
+                    "expiration_time": user_token.expiration_time,
+                });
+
                 if let Some(enabled) = body.enabled {
                     user_token.enabled = enabled;
                 }
@@ -251,6 +259,23 @@ async fn update(
                 user_token.last_edit_time = DateTime::now();
 
                 let updated_user_token: UserToken = user_token.save_changes(conn)?;
+
+                let new_data = json!({
+                    "note": updated_user_token.note,
+                    "enabled": updated_user_token.enabled,
+                    "expiration_time": updated_user_token.expiration_time,
+                });
+
+                if let Some(data) = snapshot::value_diff(old_data, new_data) {
+                    NewSnapshot {
+                        user_id: ctx.client.id,
+                        operation: ResourceOperation::Modified,
+                        resource_type: ResourceType::UserToken,
+                        resource_id: token.to_string().into(),
+                        data,
+                    }
+                    .insert(conn)?;
+                }
                 Ok::<_, ApiError>((updated_user_token, avatar_style))
             }
         })
@@ -296,15 +321,17 @@ async fn delete(Ctx(ctx, connection_pool): Ctx, Path((username, token)): Path<(S
             };
             ctx.verify_privilege(action)?;
 
-            let _: i32 = diesel::delete(
-                user_token::table
-                    .find(token)
-                    .filter(user_token::user_id.eq(user_token_owner)),
-            )
-            .returning(sql::<Integer>("0"))
-            .get_result(conn)
-            .optional()?
-            .ok_or(ApiError::NotFound(ResourceType::UserToken))?;
+            let user_token: UserToken = user_token::table
+                .find(token)
+                .filter(user_token::user_id.eq(user_token_owner))
+                .first(conn)
+                .optional()?
+                .ok_or(ApiError::NotFound(ResourceType::UserToken))?;
+
+            diesel::delete(user_token::table.find(token))
+                .execute(conn)?;
+
+            snapshot::user_token::deletion_snapshot(conn, ctx.client, &user_token)?;
             Ok::<_, ApiError>(Json(()))
         })
         .await
@@ -312,14 +339,24 @@ async fn delete(Ctx(ctx, connection_pool): Ctx, Path((username, token)): Path<(S
 
 #[cfg(test)]
 mod test {
+    use crate::api;
     use crate::api::error::ApiResult;
-    use crate::model::enums::UserRank;
+    use crate::auth::header;
+    use crate::model::enums::{ResourceOperation, ResourceType, UserRank};
+    use crate::model::snapshot::Snapshot;
     use crate::model::user::UserToken;
-    use crate::schema::{user, user_token};
+    use crate::schema::{snapshot, user, user_token};
     use crate::test::*;
+    use axum::ServiceExt;
+    use axum::extract::Request;
+    use axum::http::header::AUTHORIZATION;
+    use axum_test::TestServer;
     use diesel::dsl::exists;
     use diesel::{ExpressionMethods, PgConnection, QueryDsl, QueryResult, RunQueryDsl, SelectableHelper};
+    use serde_json::json;
     use serial_test::{parallel, serial};
+    use tower::layer::Layer;
+    use tower_http::normalize_path::NormalizePathLayer;
     use uuid::Uuid;
 
     // Exclude fields that involve token, creation_time, last_edit_time, or last_usage_time
@@ -422,6 +459,57 @@ mod test {
             "user_token/delete_another",
         )
         .await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn webhook_snapshots() -> ApiResult<()> {
+        let app_state = get_state();
+        let (router, _) = api::routes(app_state).split_for_parts();
+        let app = NormalizePathLayer::trim_trailing_slash().layer(router);
+        let server = TestServer::new(ServiceExt::<Request>::into_make_service(app))
+            .expect("Test server must be constructible");
+        let auth = header::basic_credentials_for("administrator", TEST_PASSWORD);
+
+        let body = json!({"enabled": true, "note": "wh test"});
+        let response = server
+            .post("/user-token/administrator")
+            .add_header(AUTHORIZATION, &auth)
+            .json(&body)
+            .await;
+        assert_eq!(response.status_code(), 200);
+
+        let mut conn = get_connection()?;
+        let snapshot: Snapshot = snapshot::table
+            .select(Snapshot::as_select())
+            .order(snapshot::id.desc())
+            .first(&mut conn)?;
+        assert_eq!(snapshot.operation, ResourceOperation::Created);
+        assert_eq!(snapshot.resource_type, ResourceType::UserToken);
+        assert_eq!(
+            snapshot.data,
+            json!({"note": "wh test", "enabled": true, "expiration_time": null})
+        );
+
+        let token: Uuid = user_token::table
+            .select(user_token::id)
+            .order(user_token::creation_time.desc())
+            .first(&mut conn)?;
+
+        let response = server
+            .delete(&format!("/user-token/administrator/{}", token))
+            .add_header(AUTHORIZATION, &auth)
+            .await;
+        assert_eq!(response.status_code(), 200);
+
+        let snapshot: Snapshot = snapshot::table
+            .select(Snapshot::as_select())
+            .order(snapshot::id.desc())
+            .first(&mut conn)?;
+        assert_eq!(snapshot.operation, ResourceOperation::Deleted);
+        assert_eq!(snapshot.resource_type, ResourceType::UserToken);
+
         Ok(())
     }
 }
