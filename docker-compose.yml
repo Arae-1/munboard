@@ -5,9 +5,9 @@
 services:
   server:
     #image: oxibooru/server:latest
+    restart: unless-stopped
     build:
       context: server
-      restart: unless-stopped
       args: 
         # Setting this to `native` can give small performance gains for some 
         # operations such as reverse search, but makes binary less portable.
@@ -31,8 +31,8 @@ services:
 
   client:
     #image: oxibooru/client:latest
-    build: client
     restart: unless-stopped
+    build: client
     depends_on:
       - server
     environment:

@@ -3,7 +3,8 @@ use crate::app::AppState;
 use crate::auth::{Client as AuthClient, header};
 use crate::model::enums::UserRank;
 use crate::model::snapshot::Snapshot;
-use crate::schema::snapshot;
+use crate::schema::{snapshot, user};
+use crate::string::SmallString;
 use crate::update;
 use axum::extract::{Request, State};
 use axum::http::Method;
@@ -16,6 +17,7 @@ use diesel::{
 use reqwest::Client;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue, REFERER};
 use std::sync::Arc;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, Ordering};
 use tracing::{error, warn};
 use url::Url;
@@ -85,8 +87,28 @@ pub async fn post_to_webhooks(State(state): State<AppState>, request: Request, n
             .order(snapshot::id)
             .load(conn.as_mut())?;
 
+        let user_ids: Vec<i64> = new_snapshots
+            .iter()
+            .filter_map(|s| s.user_id)
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        let user_names: HashMap<i64, String> = if !user_ids.is_empty() {
+            user::table
+                .select((user::id, user::name))
+                .filter(user::id.eq_any(&user_ids))
+                .load::<(i64, SmallString)>(conn.as_mut())?
+                .into_iter()
+                .map(|(id, name)| (id, name.to_string()))
+                .collect()
+        } else {
+            HashMap::new()
+        };
+
         for snapshot in new_snapshots {
-            post_snapshot(&state, snapshot, user_ip.clone());
+            let user_name = snapshot.user_id.and_then(|uid| user_names.get(&uid).cloned());
+            post_snapshot(&state, snapshot, user_ip.clone(), user_name);
         }
     }
 
@@ -108,7 +130,7 @@ pub fn initialize_snapshot_counter(conn: &mut PgConnection) -> QueryResult<()> {
 static LAST_POSTED_SNAPSHOT: AtomicI64 = AtomicI64::new(i64::MAX);
 
 /// Sends `snapshot` data to webhooks if it hasn't already been posted by another thread.
-fn post_snapshot(state: &AppState, snapshot: Snapshot, user_ip: Option<String>) {
+fn post_snapshot(state: &AppState, snapshot: Snapshot, user_ip: Option<String>, user_name: Option<String>) {
     loop {
         let last_posted_snapshot = LAST_POSTED_SNAPSHOT.load(Ordering::SeqCst);
         if snapshot.id <= last_posted_snapshot {
@@ -125,7 +147,7 @@ fn post_snapshot(state: &AppState, snapshot: Snapshot, user_ip: Option<String>) 
 
     let snapshot = Arc::new(snapshot);
     for url in &state.config.webhooks {
-        tokio::spawn(post_to_webhook(url.clone(), Arc::clone(&snapshot), user_ip.clone()));
+        tokio::spawn(post_to_webhook(url.clone(), Arc::clone(&snapshot), user_ip.clone(), user_name.clone()));
     }
 }
 
@@ -135,10 +157,12 @@ struct WebhookPayload<'a> {
     snapshot: &'a Snapshot,
     #[serde(skip_serializing_if = "Option::is_none")]
     user_ip: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    user_name: Option<String>,
 }
 
 /// Sends `snapshot` data to given `url`.
-async fn post_to_webhook(url: Url, snapshot: Arc<Snapshot>, user_ip: Option<String>) {
+async fn post_to_webhook(url: Url, snapshot: Arc<Snapshot>, user_ip: Option<String>, user_name: Option<String>) {
     const APPLICATION_JSON: HeaderValue = HeaderValue::from_static("application/json");
     let post = async || {
         let mut headers = HeaderMap::new();
@@ -148,6 +172,7 @@ async fn post_to_webhook(url: Url, snapshot: Arc<Snapshot>, user_ip: Option<Stri
         let payload = WebhookPayload {
             snapshot: &snapshot,
             user_ip: user_ip.clone(),
+            user_name: user_name.clone(),
         };
 
         let client = Client::builder().default_headers(headers).build()?;
