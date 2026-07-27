@@ -60,6 +60,20 @@ pub async fn auth(State(state): State<AppState>, mut request: Request, next: Nex
 /// Sends snapshot data to webhook URLs after modifying requests.
 pub async fn post_to_webhooks(State(state): State<AppState>, request: Request, next: Next) -> ApiResult<Response> {
     let can_modify_database = matches!(request.method(), &Method::POST | &Method::PUT | &Method::DELETE);
+    let user_ip = request
+        .headers()
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .map(|v| v.trim().to_string())
+        .or_else(|| {
+            request
+                .headers()
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .map(|v| v.to_string())
+        });
+
     let response = next.run(request).await;
 
     if can_modify_database {
@@ -72,7 +86,7 @@ pub async fn post_to_webhooks(State(state): State<AppState>, request: Request, n
             .load(conn.as_mut())?;
 
         for snapshot in new_snapshots {
-            post_snapshot(&state, snapshot);
+            post_snapshot(&state, snapshot, user_ip.clone());
         }
     }
 
@@ -94,7 +108,7 @@ pub fn initialize_snapshot_counter(conn: &mut PgConnection) -> QueryResult<()> {
 static LAST_POSTED_SNAPSHOT: AtomicI64 = AtomicI64::new(i64::MAX);
 
 /// Sends `snapshot` data to webhooks if it hasn't already been posted by another thread.
-fn post_snapshot(state: &AppState, snapshot: Snapshot) {
+fn post_snapshot(state: &AppState, snapshot: Snapshot, user_ip: Option<String>) {
     loop {
         let last_posted_snapshot = LAST_POSTED_SNAPSHOT.load(Ordering::SeqCst);
         if snapshot.id <= last_posted_snapshot {
@@ -111,20 +125,33 @@ fn post_snapshot(state: &AppState, snapshot: Snapshot) {
 
     let snapshot = Arc::new(snapshot);
     for url in &state.config.webhooks {
-        tokio::spawn(post_to_webhook(url.clone(), Arc::clone(&snapshot)));
+        tokio::spawn(post_to_webhook(url.clone(), Arc::clone(&snapshot), user_ip.clone()));
     }
 }
 
+#[derive(serde::Serialize)]
+struct WebhookPayload<'a> {
+    #[serde(flatten)]
+    snapshot: &'a Snapshot,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    user_ip: Option<String>,
+}
+
 /// Sends `snapshot` data to given `url`.
-async fn post_to_webhook(url: Url, snapshot: Arc<Snapshot>) {
+async fn post_to_webhook(url: Url, snapshot: Arc<Snapshot>, user_ip: Option<String>) {
     const APPLICATION_JSON: HeaderValue = HeaderValue::from_static("application/json");
     let post = async || {
         let mut headers = HeaderMap::new();
         headers.insert(REFERER, HeaderValue::from_str(url.as_str())?);
         headers.insert(CONTENT_TYPE, APPLICATION_JSON);
 
+        let payload = WebhookPayload {
+            snapshot: &snapshot,
+            user_ip: user_ip.clone(),
+        };
+
         let client = Client::builder().default_headers(headers).build()?;
-        let response = client.post(url.clone()).json(&snapshot).send().await?;
+        let response = client.post(url.clone()).json(&payload).send().await?;
         response.error_for_status().map(|_| ()).map_err(ApiError::from)
     };
 

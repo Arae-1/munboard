@@ -7,11 +7,12 @@ services:
     #image: oxibooru/server:latest
     build:
       context: server
+      restart: unless-stopped
       args: 
         # Setting this to `native` can give small performance gains for some 
         # operations such as reverse search, but makes binary less portable.
         # Leave blank to let Rust determine the target architecture. 
-        TARGET_CPU:
+        TARGET_CPU: native
     depends_on:
       - sql
     environment:
@@ -31,6 +32,7 @@ services:
   client:
     #image: oxibooru/client:latest
     build: client
+    restart: unless-stopped
     depends_on:
       - server
     environment:
