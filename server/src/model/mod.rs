@@ -1,8 +1,10 @@
 pub mod comment;
+pub mod custom_field;
 pub mod enums;
 pub mod pool;
 pub mod pool_category;
 pub mod post;
+pub mod post_custom_field;
 pub mod snapshot;
 pub mod tag;
 pub mod tag_category;

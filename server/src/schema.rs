@@ -28,6 +28,14 @@ diesel::table! {
 }
 
 diesel::table! {
+    custom_field (id) {
+        id -> Int8,
+        name -> Citext,
+        creation_time -> Timestamptz,
+    }
+}
+
+diesel::table! {
     database_statistics (id) {
         id -> Bool,
         disk_usage -> Int8,
@@ -113,6 +121,14 @@ diesel::table! {
         launch_date -> Nullable<Timestamptz>,
         media_created_date -> Nullable<Timestamptz>,
         description -> Text,
+    }
+}
+
+diesel::table! {
+    post_custom_field (post_id, custom_field_id) {
+        post_id -> Int8,
+        custom_field_id -> Int8,
+        value -> Int8,
     }
 }
 
@@ -314,6 +330,8 @@ diesel::joinable!(pool_name -> pool (pool_id));
 diesel::joinable!(pool_post -> pool (pool_id));
 diesel::joinable!(pool_post -> post (post_id));
 diesel::joinable!(pool_statistics -> pool (pool_id));
+diesel::joinable!(post_custom_field -> custom_field (custom_field_id));
+diesel::joinable!(post_custom_field -> post (post_id));
 diesel::joinable!(post -> user (user_id));
 diesel::joinable!(post_favorite -> post (post_id));
 diesel::joinable!(post_favorite -> user (user_id));
@@ -338,6 +356,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     comment,
     comment_score,
     comment_statistics,
+    custom_field,
     database_statistics,
     pool,
     pool_category,
@@ -346,6 +365,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     pool_post,
     pool_statistics,
     post,
+    post_custom_field,
     post_favorite,
     post_feature,
     post_note,
