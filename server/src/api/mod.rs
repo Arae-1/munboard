@@ -19,6 +19,7 @@ use utoipa::{IntoParams, OpenApi, ToSchema};
 use utoipa_axum::router::OpenApiRouter;
 
 mod comment;
+mod custom_field;
 mod doc;
 pub mod error;
 mod info;
@@ -38,6 +39,7 @@ mod user_token;
 pub fn routes(state: AppState) -> OpenApiRouter {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .merge(comment::routes())
+        .merge(custom_field::routes())
         .merge(info::routes())
         .merge(legacy::routes())
         .merge(password_reset::routes())

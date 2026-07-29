@@ -1,3 +1,4 @@
+use crate::api::doc::CUSTOM_FIELD_TAG;
 use crate::api::error::{ApiError, ApiResult};
 use crate::api::{DeleteBody, PagedResponse, ResourceParams};
 use crate::app::AppState;
@@ -18,8 +19,6 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
-
-const CUSTOM_FIELD_TAG: &str = "custom-field";
 
 pub fn routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()

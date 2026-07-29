@@ -2,6 +2,7 @@ use crate::error::ErrorName;
 use utoipa::OpenApi;
 
 pub const COMMENT_TAG: &str = "Comment";
+pub const CUSTOM_FIELD_TAG: &str = "Custom-Field";
 pub const INFO_TAG: &str = "Info";
 pub const PASSWORD_RESET_TAG: &str = "Password-Reset";
 pub const POOL_TAG: &str = "Pool";
@@ -19,6 +20,7 @@ pub const USER_TOKEN_TAG: &str = "User-Token";
     components(schemas(ErrorName)),
     tags(
         (name = COMMENT_TAG, description = "Comment API endpoints"),
+        (name = CUSTOM_FIELD_TAG, description = "Custom Field API endpoints"),
         (name = INFO_TAG, description = "Info API endpoints"),
         (name = PASSWORD_RESET_TAG, description = "Password reset API endpoints"),
         (name = POOL_TAG, description = "Pool API endpoints"),
