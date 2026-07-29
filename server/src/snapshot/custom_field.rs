@@ -11,12 +11,16 @@ use serde::Serialize;
 #[derive(Clone, Serialize)]
 pub struct SnapshotData {
     pub name: SmallString,
+    pub description: SmallString,
+    pub color: Option<SmallString>,
 }
 
 impl SnapshotData {
     pub fn retrieve(custom_field: CustomField) -> Self {
         Self {
             name: custom_field.name,
+            description: custom_field.description,
+            color: custom_field.color,
         }
     }
 

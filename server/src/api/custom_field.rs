@@ -102,6 +102,8 @@ async fn get(
 #[serde(rename_all = "camelCase")]
 struct CustomFieldCreateBody {
     name: SmallString,
+    description: Option<SmallString>,
+    color: Option<SmallString>,
 }
 
 /// Creates a new custom field.
@@ -127,13 +129,15 @@ async fn create(
     let cf = connection_pool
         .transaction({
             move |conn| {
-                let custom_field: CustomField = NewCustomField { name: &body.name }
-                    .insert_into(custom_field::table)
-                    .get_result(conn)
-                    .map_err(|err| {
-                        api::error::map_unique_violation::<CustomField>(Err(err), ResourceProperty::CustomFieldName)
-                            .unwrap_err()
-                    })?;
+                let result = NewCustomField {
+                    name: &body.name,
+                    description: body.description.as_deref().unwrap_or(""),
+                    color: body.color.as_deref(),
+                }
+                .insert_into(custom_field::table)
+                .get_result(conn);
+                let custom_field: CustomField =
+                    api::error::map_unique_violation(result, ResourceProperty::CustomFieldName)?;
 
                 let cf_data = SnapshotData::retrieve(custom_field.clone());
                 snapshot::custom_field::creation_snapshot(conn, ctx.client, custom_field.id, cf_data)?;
@@ -153,6 +157,9 @@ async fn create(
 struct CustomFieldUpdateBody {
     version: DateTime,
     name: SmallString,
+    #[serde(default)]
+    description: Option<SmallString>,
+    color: Option<Option<SmallString>>,
 }
 
 /// Updates an existing custom field (rename).
@@ -193,13 +200,21 @@ async fn update(
                 let old_snapshot_data = SnapshotData::retrieve(old_cf.clone());
                 ctx.verify_privilege(Action::CustomFieldEditName)?;
 
-                diesel::update(custom_field::table.find(custom_field_id))
+                let result = diesel::update(custom_field::table.find(custom_field_id))
                     .set(custom_field::name.eq(&body.name))
-                    .execute(conn)
-                    .map_err(|err| {
-                        api::error::map_unique_violation::<usize>(Err(err), ResourceProperty::CustomFieldName)
-                            .unwrap_err()
-                    })?;
+                    .execute(conn);
+                api::error::map_unique_violation::<usize>(result, ResourceProperty::CustomFieldName)?;
+
+                if let Some(description) = &body.description {
+                    diesel::update(custom_field::table.find(custom_field_id))
+                        .set(custom_field::description.eq(description))
+                        .execute(conn)?;
+                }
+                if let Some(color) = &body.color {
+                    diesel::update(custom_field::table.find(custom_field_id))
+                        .set(custom_field::color.eq(color.as_deref()))
+                        .execute(conn)?;
+                }
 
                 let updated_cf: CustomField = custom_field::table.find(custom_field_id).first(conn)?;
                 let new_snapshot_data = SnapshotData::retrieve(updated_cf.clone());

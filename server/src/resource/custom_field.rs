@@ -26,6 +26,8 @@ pub enum Field {
     Version,
     Id,
     Name,
+    Description,
+    Color,
     CreationTime,
 }
 
@@ -43,6 +45,8 @@ pub struct CustomFieldInfo {
     version: Option<DateTime>,
     id: Option<i64>,
     name: Option<SmallString>,
+    description: Option<SmallString>,
+    color: Option<Option<SmallString>>,
     creation_time: Option<DateTime>,
 }
 
@@ -71,17 +75,17 @@ impl CustomFieldInfo {
         custom_fields: Vec<CustomField>,
         fields: Mask<Field>,
     ) -> QueryResult<Vec<Self>> {
-        let mut results = custom_fields
+        let results = custom_fields
             .into_iter()
-            .rev()
             .map(|cf| Self {
                 version: fields[Field::Version].then_some(cf.creation_time),
                 id: fields[Field::Id].then_some(cf.id),
                 name: fields[Field::Name].then_some(cf.name),
+                description: fields[Field::Description].then_some(cf.description),
+                color: fields[Field::Color].then_some(cf.color),
                 creation_time: fields[Field::CreationTime].then_some(cf.creation_time),
             })
             .collect::<Vec<_>>();
-        results.reverse();
         Ok(results)
     }
 

@@ -31,6 +31,9 @@ diesel::table! {
     custom_field (id) {
         id -> Int8,
         name -> Citext,
+        description -> Text,
+        #[max_length = 32]
+        color -> Nullable<Varchar>,
         creation_time -> Timestamptz,
     }
 }

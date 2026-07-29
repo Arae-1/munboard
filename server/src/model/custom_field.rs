@@ -9,6 +9,8 @@ use diesel::{AsChangeset, Identifiable, Insertable, Queryable, Selectable};
 #[diesel(check_for_backend(Pg))]
 pub struct NewCustomField<'a> {
     pub name: &'a str,
+    pub description: &'a str,
+    pub color: Option<&'a str>,
 }
 
 #[derive(Clone, Debug, AsChangeset, Identifiable, Queryable, Selectable)]
@@ -17,5 +19,7 @@ pub struct NewCustomField<'a> {
 pub struct CustomField {
     pub id: i64,
     pub name: SmallString,
+    pub description: SmallString,
+    pub color: Option<SmallString>,
     pub creation_time: DateTime,
 }
