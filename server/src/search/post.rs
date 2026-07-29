@@ -12,8 +12,8 @@ use crate::search::{
     preferences,
 };
 use crate::{
-    apply_cache_filters, apply_distinct_if_multivalued, apply_filter, apply_random_sort, apply_sort, apply_str_filter,
-    apply_time_filter, update_filter_cache, update_nonmatching_filter_cache,
+    apply_cache_filters, apply_condition, apply_distinct_if_multivalued, apply_filter, apply_random_sort, apply_sort,
+    apply_str_filter, apply_time_filter, update_filter_cache, update_nonmatching_filter_cache,
 };
 use diesel::dsl::{Eq, InnerJoin, InnerJoinOn, IntoBoxed, LeftJoin, Select, count, exists, not, sql};
 use diesel::expression::{SqlLiteral, UncheckedBind};

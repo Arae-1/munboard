@@ -676,6 +676,7 @@ async fn create_impl(ctx: Ctx, params: ResourceParams<Field>, body: PostCreateBo
                 relations,
                 notes,
                 featured: false,
+                custom_fields: vec![],
             };
             snapshot::post::creation_snapshot(conn, ctx.client, post.id, post_data)?;
             Ok::<_, ApiError>(post.id)

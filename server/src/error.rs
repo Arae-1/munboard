@@ -20,6 +20,8 @@ pub enum ErrorName {
     ContentTypeMismatch,
     CrossesDevices,
     CryptoError,
+    CustomFieldNameAlreadyExists,
+    CustomFieldNotFound,
     CyclicDependency,
     Deadlock,
     DeleteDefault,
@@ -351,6 +353,7 @@ impl ErrorKind for crate::auth::header::AuthenticationError {
 impl ErrorKind for crate::model::enums::ResourceProperty {
     fn kind(&self) -> ErrorName {
         match self {
+            Self::CustomFieldName => ErrorName::CustomFieldNameAlreadyExists,
             Self::PoolName => ErrorName::PoolNameAlreadyExists,
             Self::PoolPost => ErrorName::PoolPostAlreadyExists,
             Self::PoolCategoryName => ErrorName::PoolCategoryNameAlreadyExists,
@@ -369,6 +372,7 @@ impl ErrorKind for crate::model::enums::ResourceType {
     fn kind(&self) -> ErrorName {
         match self {
             Self::Comment => ErrorName::CommentNotFound,
+            Self::CustomField => ErrorName::CustomFieldNotFound,
             Self::Pool => ErrorName::PoolNotFound,
             Self::PoolCategory => ErrorName::PoolCategoryNotFound,
             Self::Post => ErrorName::PostNotFound,

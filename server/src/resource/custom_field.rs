@@ -1,11 +1,11 @@
 use crate::app::Context;
 use crate::model::custom_field::CustomField;
 use crate::resource;
-use crate::resource::field::{Batcher, Mask};
+use crate::resource::field::Mask;
 use crate::schema::custom_field;
 use crate::string::SmallString;
 use crate::time::DateTime;
-use diesel::{Identifiable, PgConnection, QueryDsl, QueryResult, RunQueryDsl};
+use diesel::{ExpressionMethods, PgConnection, QueryDsl, QueryResult, RunQueryDsl};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use server_macros::non_nullable_options;
@@ -102,7 +102,7 @@ impl CustomFieldInfo {
 pub fn get_custom_fields_for_posts(
     conn: &mut PgConnection,
     post_ids: &[i64],
-) -> QueryResult<HashMap<i64, Vec<CustomFieldValue>>> {
+) -> QueryResult<Vec<Vec<CustomFieldValue>>> {
     use crate::schema::{custom_field, post_custom_field};
 
     let values: Vec<(i64, SmallString, i64)> = post_custom_field::table
@@ -115,5 +115,5 @@ pub fn get_custom_fields_for_posts(
     for (post_id, name, value) in values {
         map.entry(post_id).or_default().push(CustomFieldValue { name, value });
     }
-    Ok(map)
+    Ok(post_ids.iter().map(|id| map.remove(id).unwrap_or_default()).collect())
 }

@@ -5,7 +5,7 @@ use crate::model::enums::{ResourceOperation, ResourceType};
 use crate::model::snapshot::NewSnapshot;
 use crate::snapshot;
 use crate::string::SmallString;
-use diesel::{PgConnection, QueryResult};
+use diesel::PgConnection;
 use serde::Serialize;
 
 #[derive(Clone, Serialize)]

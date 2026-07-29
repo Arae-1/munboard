@@ -13,9 +13,8 @@ use crate::string::SmallString;
 use crate::time::DateTime;
 use crate::{api, snapshot};
 use diesel::dsl::exists;
-use diesel::{ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl};
+use diesel::{ExpressionMethods, Insertable, OptionalExtension, QueryDsl, RunQueryDsl};
 use serde::Deserialize;
-use std::sync::Arc;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
@@ -127,18 +126,17 @@ async fn create(
 
     let cf = connection_pool
         .transaction({
-            let client = ctx.client.clone();
             move |conn| {
                 let custom_field: CustomField = NewCustomField { name: &body.name }
                     .insert_into(custom_field::table)
                     .get_result(conn)
                     .map_err(|err| {
-                        api::error::map_unique_violation(err, ResourceProperty::CustomFieldName)
+                        api::error::map_unique_violation::<CustomField>(Err(err), ResourceProperty::CustomFieldName)
                             .unwrap_err()
                     })?;
 
                 let cf_data = SnapshotData::retrieve(custom_field.clone());
-                snapshot::custom_field::creation_snapshot(conn, client, custom_field.id, cf_data)?;
+                snapshot::custom_field::creation_snapshot(conn, ctx.client, custom_field.id, cf_data)?;
                 Ok::<_, ApiError>(custom_field)
             }
         })
@@ -181,41 +179,44 @@ async fn update(
     Query(params): Query<ResourceParams<Field>>,
     Json(body): Json<CustomFieldUpdateBody>,
 ) -> ApiResult<Json<CustomFieldInfo>> {
-    connection_pool
-        .transaction(move |conn| {
-            let old_cf: CustomField = custom_field::table
-                .find(custom_field_id)
-                .first(conn)
-                .optional()?
-                .ok_or(ApiError::NotFound(ResourceType::CustomField))?;
-            api::verify_version(old_cf.creation_time, body.version)?;
+    let cf_id = connection_pool
+        .transaction({
+            let ctx = ctx.clone();
+            move |conn| {
+                let old_cf: CustomField = custom_field::table
+                    .find(custom_field_id)
+                    .first(conn)
+                    .optional()?
+                    .ok_or(ApiError::NotFound(ResourceType::CustomField))?;
+                api::verify_version(old_cf.creation_time, body.version)?;
 
-            let old_snapshot_data = SnapshotData::retrieve(old_cf.clone());
-            ctx.verify_privilege(Action::CustomFieldEditName)?;
+                let old_snapshot_data = SnapshotData::retrieve(old_cf.clone());
+                ctx.verify_privilege(Action::CustomFieldEditName)?;
 
-            diesel::update(custom_field::table.find(custom_field_id))
-                .set(custom_field::name.eq(&body.name))
-                .execute(conn)
-                .map_err(|err| {
-                    api::error::map_unique_violation(err, ResourceProperty::CustomFieldName)
-                        .unwrap_err()
-                })?;
+                diesel::update(custom_field::table.find(custom_field_id))
+                    .set(custom_field::name.eq(&body.name))
+                    .execute(conn)
+                    .map_err(|err| {
+                        api::error::map_unique_violation::<usize>(Err(err), ResourceProperty::CustomFieldName)
+                            .unwrap_err()
+                    })?;
 
-            let updated_cf: CustomField = custom_field::table.find(custom_field_id).first(conn)?;
-            let new_snapshot_data = SnapshotData::retrieve(updated_cf.clone());
+                let updated_cf: CustomField = custom_field::table.find(custom_field_id).first(conn)?;
+                let new_snapshot_data = SnapshotData::retrieve(updated_cf.clone());
 
-            snapshot::custom_field::modification_snapshot(
-                conn,
-                ctx.client,
-                custom_field_id,
-                old_snapshot_data,
-                new_snapshot_data,
-            )?;
-            Ok(())
+                snapshot::custom_field::modification_snapshot(
+                    conn,
+                    ctx.client,
+                    custom_field_id,
+                    old_snapshot_data,
+                    new_snapshot_data,
+                )?;
+                Ok::<_, ApiError>(custom_field_id)
+            }
         })
         .await?;
     connection_pool
-        .transaction(move |conn| CustomFieldInfo::new_from_id(conn, &ctx, custom_field_id, params.fields))
+        .transaction(move |conn| CustomFieldInfo::new_from_id(conn, &ctx, cf_id, params.fields))
         .await
         .map(Json)
 }

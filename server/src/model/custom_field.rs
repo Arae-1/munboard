@@ -11,7 +11,7 @@ pub struct NewCustomField<'a> {
     pub name: &'a str,
 }
 
-#[derive(Clone, AsChangeset, Identifiable, Queryable, Selectable)]
+#[derive(Clone, Debug, AsChangeset, Identifiable, Queryable, Selectable)]
 #[diesel(table_name = custom_field)]
 #[diesel(check_for_backend(Pg))]
 pub struct CustomField {
