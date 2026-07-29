@@ -12,8 +12,9 @@ use crate::db::AsyncConnectionPool;
 use crate::extract::{Ctx, Json, JsonOrMultipart, Path, Query};
 use crate::model::enums::{PostFlag, PostFlags, PostSafety, ResourceProperty, ResourceType, Score};
 use crate::model::post::{NewPost, NewPostFeature, NewPostSignature, Post, PostFavorite, PostScore, PostSignature};
+use crate::resource::custom_field::CustomFieldValue;
 use crate::resource::post::{Field, Note, PostInfo};
-use crate::schema::{post, post_favorite, post_feature, post_score, post_signature, post_statistics};
+use crate::schema::{custom_field, post, post_custom_field, post_favorite, post_feature, post_score, post_signature, post_statistics};
 use crate::search::post::QueryBuilder;
 use crate::search::{Builder, preferences};
 use crate::snapshot::post::SnapshotData;
@@ -29,6 +30,7 @@ use diesel::{
     SelectableHelper,
 };
 use serde::{Deserialize, Deserializer, Serialize};
+use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::info;
@@ -1075,6 +1077,35 @@ async fn update_impl(
                 ctx.verify_privilege(Action::PostEditThumbnail)?;
                 update::post::thumbnail(conn, &post_hash, &thumbnail, ThumbnailCategory::Custom)?;
             }
+            if let Some(custom_fields) = body.custom_fields {
+                ctx.verify_privilege(Action::PostEditCustomFields)?;
+
+                diesel::delete(post_custom_field::table.filter(post_custom_field::post_id.eq(post_id)))
+                    .execute(conn)?;
+
+                let mut new_values: Vec<CustomFieldValue> = Vec::with_capacity(custom_fields.len());
+                for (name, value) in &custom_fields {
+                    let cf_id: i64 = custom_field::table
+                        .select(custom_field::id)
+                        .filter(custom_field::name.eq(name))
+                        .first(conn)
+                        .optional()?
+                        .ok_or(ApiError::NotFound(ResourceType::CustomField))?;
+
+                    diesel::insert_into(post_custom_field::table)
+                        .values((
+                            post_custom_field::post_id.eq(post_id),
+                            post_custom_field::custom_field_id.eq(cf_id),
+                            post_custom_field::value.eq(*value),
+                        ))
+                        .execute(conn)?;
+                    new_values.push(CustomFieldValue {
+                        name: name.clone(),
+                        value: *value,
+                    });
+                }
+                new_snapshot_data.custom_fields = new_values;
+            }
 
             new_post.last_edit_time = DateTime::now();
             let _: Post = error::map_unique_violation(new_post.save_changes(conn), ResourceProperty::PostContent)?;
@@ -1131,6 +1162,10 @@ struct PostUpdateBody {
     thumbnail_token: Option<UploadToken>,
     /// URL to fetch thumbnail from.
     thumbnail_url: Option<Url>,
+    /// Map of custom field name to value. Replaces all existing custom fields on the post.
+    /// Send empty map `{}` to clear all.
+    #[serde(default)]
+    custom_fields: Option<HashMap<SmallString, i64>>,
 }
 
 /// Updates existing post.
