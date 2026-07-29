@@ -14,6 +14,7 @@ use crate::resource::field::{Batcher, Mask};
 use crate::resource::pool::MicroPool;
 use crate::resource::tag::MicroTag;
 use crate::resource::user::MicroUser;
+use crate::resource::custom_field::CustomFieldValue;
 use crate::schema::{
     comment, comment_score, comment_statistics, pool, pool_category, pool_name, pool_statistics, post, post_favorite,
     post_note, post_relation, post_score, tag, tag_category, tag_name, tag_statistics, user,
@@ -125,6 +126,7 @@ pub enum Field {
     LastFeatureTime,
     FavoritedBy,
     HasCustomThumbnail,
+    CustomFields,
 }
 
 impl From<Field> for u64 {
@@ -216,6 +218,8 @@ pub struct PostInfo {
     favorited_by: Option<Vec<MicroUser>>,
     /// Whether the post uses custom thumbnail.
     has_custom_thumbnail: Option<bool>,
+    /// Custom fields assigned to the post.
+    custom_fields: Option<Vec<CustomFieldValue>>,
 }
 
 impl PostInfo {
@@ -258,6 +262,12 @@ impl PostInfo {
         let mut last_feature_times =
             f.exec(Field::LastFeatureTime, || post_stats!(conn, &posts, last_feature_time, Option<DateTime>))?;
         let mut favorited_by = f.exec(Field::FavoritedBy, || get_favorited_by(conn, &ctx.config, &posts))?;
+        let mut custom_fields = f.exec(Field::CustomFields, || {
+            crate::resource::custom_field::get_custom_fields_for_posts(
+                conn,
+                &posts.iter().map(|p| p.id).collect::<Vec<_>>(),
+            )
+        })?;
 
         let mut results = posts
             .into_iter()
@@ -303,6 +313,7 @@ impl PostInfo {
                 pools: pools.pop(),
                 has_custom_thumbnail: fields[Field::HasCustomThumbnail]
                     .then(|| PostHash::new(&ctx.config, post.id).custom_thumbnail_path().exists()),
+                custom_fields: custom_fields.pop(),
             })
             .collect::<Vec<_>>();
         results.reverse();

@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 pub mod comment;
+pub mod custom_field;
 pub mod field;
 pub mod pool;
 pub mod pool_category;
