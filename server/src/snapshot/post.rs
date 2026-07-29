@@ -5,7 +5,8 @@ use crate::model::post::{Post, PostNote};
 use crate::model::snapshot::NewSnapshot;
 use crate::model::tag::TagName;
 use crate::resource::post::Note;
-use crate::schema::{post_feature, post_note, post_relation, post_tag, tag_name};
+use crate::resource::custom_field::CustomFieldValue;
+use crate::schema::{custom_field, post_custom_field, post_feature, post_note, post_relation, post_tag, tag_name};
 use crate::snapshot;
 use crate::string::{LargeString, SmallString};
 use crate::time::DateTime;
@@ -28,6 +29,7 @@ pub struct SnapshotData {
     pub relations: Vec<i64>,
     pub notes: Vec<Note>,
     pub featured: bool,
+    pub custom_fields: Vec<CustomFieldValue>,
 }
 
 impl SnapshotData {
@@ -51,6 +53,11 @@ impl SnapshotData {
             .order(post_feature::time.desc())
             .first(conn)
             .optional()?;
+        let custom_field_values: Vec<(SmallString, i64)> = post_custom_field::table
+            .inner_join(custom_field::table)
+            .select((custom_field::name, post_custom_field::value))
+            .filter(post_custom_field::post_id.eq(post.id))
+            .load(conn)?;
         Ok(Self {
             safety: post.safety,
             checksum: hex::encode(&post.checksum),
@@ -63,6 +70,10 @@ impl SnapshotData {
             relations,
             notes: notes.into_iter().map(Note::new).collect(),
             featured: latest_feature == Some(post.id),
+            custom_fields: custom_field_values
+                .into_iter()
+                .map(|(name, value)| CustomFieldValue { name, value })
+                .collect(),
         })
     }
 
@@ -70,6 +81,7 @@ impl SnapshotData {
         self.tags.sort_unstable();
         self.relations.sort_unstable();
         self.notes.sort_unstable_by_key(Note::id);
+        self.custom_fields.sort_unstable_by(|a, b| a.name.cmp(&b.name));
     }
 }
 

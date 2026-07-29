@@ -7,6 +7,7 @@ use serde_json::{Map, Value, json};
 use std::collections::HashSet;
 
 pub mod comment;
+pub mod custom_field;
 pub mod pool;
 pub mod pool_category;
 pub mod post;
