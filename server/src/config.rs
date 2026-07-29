@@ -176,6 +176,13 @@ pub enum Action {
     CommentView,
     CommentScore,
 
+    CustomFieldCreate,
+    CustomFieldEditName,
+    CustomFieldDelete,
+    CustomFieldList,
+    CustomFieldView,
+    PostEditCustomFields,
+
     SnapshotList,
 
     UploadCreate,

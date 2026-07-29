@@ -181,6 +181,13 @@ comment_list               = "regular"
 comment_view               = "regular"
 comment_score              = "regular"
 
+custom_field_create        = "power"
+custom_field_edit_name     = "power"
+custom_field_delete        = "power"
+custom_field_list          = "anonymous"
+custom_field_view          = "anonymous"
+post_edit_custom_fields    = "regular"
+
 snapshot_list              = "power"
 
 upload_create              = "regular"
