@@ -4,8 +4,8 @@ use crate::auth::Client;
 use crate::content::hash::Checksum;
 use crate::model::enums::{PostFlag, PostFlags, PostSafety, PostType};
 use crate::schema::{
-    comment, database_statistics, pool, pool_category, pool_name, pool_post, post, post_favorite, post_feature,
-    post_note, post_score, post_statistics, post_tag, tag, tag_category, tag_name, user,
+    comment, custom_field, database_statistics, pool, pool_category, pool_name, pool_post, post, post_custom_field,
+    post_favorite, post_feature, post_note, post_score, post_statistics, post_tag, tag, tag_category, tag_name, user,
 };
 use crate::search::{
     self, Builder, CacheState, Condition, Order, ParsedSort, SearchCriteria, StrCondition, UnparsedFilter, parse,
@@ -95,6 +95,8 @@ pub enum Token {
     FavTime,
     #[strum(serialize = "feature-date", serialize = "feature-time")]
     FeatureTime,
+    #[strum(serialize = "cf", serialize = "custom-field")]
+    CustomField,
     Special,
 }
 
@@ -173,6 +175,7 @@ impl<'a> Builder<'a> for QueryBuilder<'a> {
                 Token::CommentTime => apply_comment_time_filter(conn, query, filter, state),
                 Token::FavTime => apply_favorite_time_filter(conn, query, filter, state),
                 Token::FeatureTime => apply_feature_time_filter(conn, query, filter, state),
+                Token::CustomField => apply_custom_field_filter(conn, query, filter, state),
                 Token::Special => apply_special_filter(conn, query, self.search.ctx.client, filter, state),
             })?;
         if let Some(nonmatching) = nonmatching_posts {
@@ -223,7 +226,7 @@ impl<'a> Builder<'a> for QueryBuilder<'a> {
             Token::CommentTime => apply_sort!(query, post_statistics::last_comment_time, sort),
             Token::FavTime => apply_sort!(query, post_statistics::last_favorite_time, sort),
             Token::FeatureTime => apply_sort!(query, post_statistics::last_feature_time, sort),
-            Token::ContentChecksum | Token::NoteText | Token::PoolCategory | Token::Special | Token::TagCategory => {
+            Token::ContentChecksum | Token::NoteText | Token::PoolCategory | Token::Special | Token::TagCategory | Token::CustomField => {
                 unreachable!()
             }
         });
@@ -250,6 +253,7 @@ impl<'a> QueryBuilder<'a> {
             if matches!(
                 sort.kind,
                 Token::ContentChecksum | Token::NoteText | Token::PoolCategory | Token::Special | Token::TagCategory
+                | Token::CustomField
             ) {
                 return Err(ApiError::InvalidSort);
             }
@@ -538,6 +542,27 @@ fn apply_special_filter(
     Ok(query)
 }
 
+fn apply_custom_field_filter(
+    conn: &mut PgConnection,
+    query: BoxedQuery,
+    filter: UnparsedFilter<Token>,
+    state: &mut CacheState,
+) -> ApiResult<BoxedQuery> {
+    let (name, value_str) = parse::split_once(filter.condition, '=')
+        .ok_or_else(|| ApiError::FromStr("custom field filter requires name=value".into()))?;
+    let condition: Condition<i64> = parse::condition(value_str)?;
+
+    let cf_posts = post_custom_field::table
+        .inner_join(custom_field::table)
+        .select(post_custom_field::post_id)
+        .filter(custom_field::name.eq(name))
+        .into_boxed();
+    let cf_posts = apply_condition!(cf_posts, post_custom_field::value, filter.unnegated(), condition);
+    let cf_posts = apply_distinct_if_multivalued!(cf_posts, filter);
+    update_filter_cache!(conn, cf_posts, post_custom_field::post_id, filter, state)?;
+    Ok(query)
+}
+
 fn inherited_launch_date() -> diesel::expression::SqlLiteral<diesel::sql_types::Nullable<diesel::sql_types::Timestamptz>>
 {
     diesel::dsl::sql("COALESCE((SELECT pool.launch_date FROM pool_post INNER JOIN pool ON pool.id = pool_post.pool_id WHERE pool_post.post_id = post.id AND pool.launch_date IS NOT NULL LIMIT 1), post.launch_date)")
@@ -581,6 +606,7 @@ pub fn filter_table() -> TokenTable<&'static str> {
         _comment_time: "-2020",
         _fav_time: "-2020..2021",
         _feature_time: "-2020..2022",
+        _custom_field: "",
         _special: "fav",
     }
 }
