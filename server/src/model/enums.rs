@@ -466,6 +466,7 @@ impl FromSql<SmallInt, Pg> for ResourceOperation {
 #[repr(i16)]
 pub enum ResourceType {
     Comment,
+    CustomField,
     Pool,
     PoolCategory,
     Post,
@@ -494,6 +495,7 @@ impl FromSql<SmallInt, Pg> for ResourceType {
 #[derive(Debug, Display)]
 #[strum(serialize_all = "snake_case")]
 pub enum ResourceProperty {
+    CustomFieldName,
     PoolName,
     PoolPost,
     PoolCategoryName,
