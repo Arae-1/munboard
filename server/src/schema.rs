@@ -32,8 +32,7 @@ diesel::table! {
         id -> Int8,
         name -> Citext,
         description -> Text,
-        #[max_length = 32]
-        color -> Nullable<Varchar>,
+        color -> Text,
         creation_time -> Timestamptz,
     }
 }

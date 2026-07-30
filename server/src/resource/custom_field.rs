@@ -46,7 +46,7 @@ pub struct CustomFieldInfo {
     id: Option<i64>,
     name: Option<SmallString>,
     description: Option<SmallString>,
-    color: Option<Option<SmallString>>,
+    color: Option<SmallString>,
     creation_time: Option<DateTime>,
 }
 

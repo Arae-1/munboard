@@ -13,7 +13,7 @@ use crate::string::SmallString;
 use crate::time::DateTime;
 use crate::{api, snapshot};
 use diesel::dsl::exists;
-use diesel::{ExpressionMethods, Insertable, OptionalExtension, QueryDsl, RunQueryDsl};
+use diesel::{Insertable, OptionalExtension, QueryDsl, RunQueryDsl, SaveChangesDsl};
 use serde::Deserialize;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
@@ -132,7 +132,7 @@ async fn create(
                 let result = NewCustomField {
                     name: &body.name,
                     description: body.description.as_deref().unwrap_or(""),
-                    color: body.color.as_deref(),
+                    color: body.color.as_deref().unwrap_or(""),
                 }
                 .insert_into(custom_field::table)
                 .get_result(conn);
@@ -159,7 +159,8 @@ struct CustomFieldUpdateBody {
     name: SmallString,
     #[serde(default)]
     description: Option<SmallString>,
-    color: Option<Option<SmallString>>,
+    #[serde(default)]
+    color: Option<SmallString>,
 }
 
 /// Updates an existing custom field (rename).
@@ -200,25 +201,22 @@ async fn update(
                 let old_snapshot_data = SnapshotData::retrieve(old_cf.clone());
                 ctx.verify_privilege(Action::CustomFieldEditName)?;
 
-                let result = diesel::update(custom_field::table.find(custom_field_id))
-                    .set(custom_field::name.eq(&body.name))
-                    .execute(conn);
-                api::error::map_unique_violation::<usize>(result, ResourceProperty::CustomFieldName)?;
+                let mut updated_cf = old_cf.clone();
+                updated_cf.name = body.name;
+                if let Some(description) = body.description {
+                    updated_cf.description = description;
+                }
+                if let Some(color) = body.color {
+                    updated_cf.color = color;
+                }
 
-                if let Some(description) = &body.description {
-                    diesel::update(custom_field::table.find(custom_field_id))
-                        .set(custom_field::description.eq(description))
-                        .execute(conn)?;
-                }
-                if let Some(color) = &body.color {
-                    diesel::update(custom_field::table.find(custom_field_id))
-                        .set(custom_field::color.eq(color.as_deref()))
-                        .execute(conn)?;
-                }
+                let _: CustomField = api::error::map_unique_violation(
+                    updated_cf.save_changes(conn),
+                    ResourceProperty::CustomFieldName,
+                )?;
 
                 let updated_cf: CustomField = custom_field::table.find(custom_field_id).first(conn)?;
                 let new_snapshot_data = SnapshotData::retrieve(updated_cf.clone());
-
                 snapshot::custom_field::modification_snapshot(
                     conn,
                     ctx.client,

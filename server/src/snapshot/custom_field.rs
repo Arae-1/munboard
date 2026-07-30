@@ -12,7 +12,7 @@ use serde::Serialize;
 pub struct SnapshotData {
     pub name: SmallString,
     pub description: SmallString,
-    pub color: Option<SmallString>,
+    pub color: SmallString,
 }
 
 impl SnapshotData {
