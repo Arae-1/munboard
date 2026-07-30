@@ -96,6 +96,12 @@
             </section>
         <% } %>
 
+        <% if (ctx.canEditPostCustomFields) { %>
+            <section class='custom-fields'>
+                <%= ctx.makeTextInput({}) %>
+            </section>
+        <% } %>
+
         <% if (ctx.canEditPostNotes) { %>
             <section class='notes'>
                 <a href class='add'>Add a note</a>

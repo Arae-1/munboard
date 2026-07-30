@@ -130,6 +130,26 @@
         </section>
     <% } %>
 
+    <% if (ctx.post.customFields && Object.keys(ctx.post.customFields).length) { %>
+        <nav class='custom-fields'>
+            <h1>Custom Fields (<%- Object.keys(ctx.post.customFields).length %>)</h1>
+            <ul class='compact-custom-fields'><!--
+                --><% for (let name of Object.keys(ctx.post.customFields).sort()) { %><!--
+                    --><li><!--
+                        --><% if (ctx.canViewCustomFields) { %><!--
+                            --><a href='<%- ctx.formatClientLink('custom-fields') %>'><!--
+                                --><i class='fa fa-wrench'></i><!--
+                            --></a><!--
+                        --><% } %><!--
+                        --><span class='custom-field-name'><%- name %></span><!--
+                        --><span class='custom-field-value'><%- ctx.post.customFields[name] %></span><!--
+                        -->&#32;<!--
+                    --></li><!--
+                --><% } %><!--
+            --></ul>
+        </nav>
+    <% } %>
+
     <% if (ctx.post.launchDate) { %>
         <section class='launch-date'>
             <b>Launch date:</b> <%- ctx.post.launchDate.slice(0, 10) %>

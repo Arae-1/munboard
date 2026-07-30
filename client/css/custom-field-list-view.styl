@@ -1,0 +1,47 @@
+@import colors
+
+.custom-field-list
+    table
+        width: 100%
+        border-spacing: 0
+        text-align: left
+        line-height: 1.3em
+        tr:hover td
+            background: $top-navigation-color
+        th, td
+            padding: 0.1em 0.5em
+        th
+            white-space: nowrap
+            background: $top-navigation-color
+        .name
+            width: 30%
+        .description
+            width: 40%
+        .color
+            width: 10%
+            text-align: center
+        .creation-time
+            text-align: center
+            width: 20%
+            white-space: pre
+        @media (max-width: 800px)
+            .description
+                display: none
+
+.darktheme .custom-field-list
+    table
+        tr:hover td
+            background: $top-navigation-color-darktheme
+        th
+            background: $top-navigation-color-darktheme
+
+.custom-field-list-header
+    text-align: left
+    .append
+        vertical-align: middle
+        font-size: 0.95em
+        color: $inactive-link-color
+
+.darktheme .custom-field-list-header
+    .append
+        color: $inactive-link-color-darktheme

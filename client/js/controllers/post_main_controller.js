@@ -66,6 +66,8 @@ class PostMainController extends BasePostController {
                     nextPostId: nextPostId,
                     canEditPosts: api.hasPrivilege("post_edit"),
                     canEditPostDescription: api.hasPrivilege("post_edit_description"),
+                    canEditPostCustomFields: api.hasPrivilege("post_edit_custom_fields"),
+                    canViewCustomFields: api.hasPrivilege("custom_field_list"),
                     canDeletePosts: api.hasPrivilege("post_delete"),
                     canFeaturePosts: api.hasPrivilege("post_feature"),
                     canListComments: api.hasPrivilege("comment_list"),

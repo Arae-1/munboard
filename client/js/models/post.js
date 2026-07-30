@@ -21,6 +21,7 @@ class Post extends events.EventTarget {
             obj._notes = new NoteList();
             obj._comments = new CommentList();
             obj._pools = new PoolList();
+            obj._customFields = {};
         }
 
         this._updateFromResponse({});
@@ -270,6 +271,14 @@ class Post extends events.EventTarget {
         return Promise.all(ops);
     }
 
+    get customFields() {
+        return this._customFields;
+    }
+
+    set customFields(value) {
+        this._customFields = value;
+    }
+
     save(anonymous) {
         const files = {};
         const detail = { version: this._version };
@@ -316,6 +325,9 @@ class Post extends events.EventTarget {
         }
         if (this._description !== this._orig._description) {
             detail.description = this._description;
+        }
+        if (misc.objectsDiffer(this._customFields, this._orig._customFields)) {
+            detail.customFields = Object.assign({}, this._customFields);
         }
 
         let apiPromise = this._id
@@ -543,6 +555,12 @@ class Post extends events.EventTarget {
             obj._notes.sync(response.notes);
             obj._comments.sync(response.comments);
             obj._pools.sync(response.pools);
+            obj._customFields = {};
+            if (response.customFields) {
+                for (let cf of response.customFields) {
+                    obj._customFields[cf.name] = cf.value;
+                }
+            }
         }
 
         Object.assign(this, map());

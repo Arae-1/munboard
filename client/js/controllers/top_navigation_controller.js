@@ -53,6 +53,9 @@ class TopNavigationController {
         if (!api.hasPrivilege("pool_list")) {
             topNavigation.hide("pools");
         }
+        if (!api.hasPrivilege("custom_field_list")) {
+            topNavigation.hide("custom-fields");
+        }
         if (api.isLoggedIn()) {
             if (!api.hasPrivilege("user_create_any")) {
                 topNavigation.hide("register");

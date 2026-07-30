@@ -1,0 +1,45 @@
+@import colors
+
+div.custom-field-input
+    position: relative
+
+    .main-control
+        display: flex
+        flex-wrap: wrap
+        gap: 0.3em
+        input.cf-name
+            flex: 2
+            min-width: 8em
+        input.cf-value
+            flex: 1
+            min-width: 5em
+        button
+            flex: none
+            margin: 0
+
+ul.compact-custom-fields
+    width: 100%
+    margin: 0.5em 0 0 0
+    padding: 0
+    li
+        margin: 0
+        width: 100%
+        line-height: 140%
+        white-space: nowrap
+        overflow: hidden
+        text-overflow: ellipsis
+        .custom-field-name
+            font-weight: bold
+            margin-right: 0.5em
+        .custom-field-value
+            color: $main-color
+
+    .remove-custom-field
+        color: $inactive-link-color
+        unselectable()
+        margin-right: 0.5em
+
+.darktheme
+    div.custom-field-input, ul.compact-custom-fields
+        .remove-custom-field
+            color: $inactive-link-color-darktheme

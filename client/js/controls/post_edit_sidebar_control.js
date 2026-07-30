@@ -9,6 +9,7 @@ const Note = require("../models/note.js");
 const Point = require("../models/point.js");
 const TagInputControl = require("./tag_input_control.js");
 const PoolInputControl = require("./pool_input_control.js");
+const CustomFieldInputControl = require("./custom_field_input_control.js");
 const ExpanderControl = require("../controls/expander_control.js");
 const FileDropperControl = require("../controls/file_dropper_control.js");
 
@@ -44,6 +45,7 @@ class PostEditSidebarControl extends events.EventTarget {
                 canEditPostContent: api.hasPrivilege("post_edit_content"),
                 canEditPostThumbnail: api.hasPrivilege("post_edit_thumbnail"),
                 canEditPoolPosts: api.hasPrivilege("pool_edit_post"),
+                canEditPostCustomFields: api.hasPrivilege("post_edit_custom_fields"),
                 canCreateAnonymousPosts: api.hasPrivilege(
                     "post_create_anonymous"
                 ),
@@ -75,6 +77,11 @@ class PostEditSidebarControl extends events.EventTarget {
             `Pools (${this._post.pools.length})`,
             this._hostNode.querySelectorAll(".pools")
         );
+        this._customFieldsExpander = new ExpanderControl(
+            "post-custom-fields",
+            `Custom Fields (${Object.keys(this._post.customFields).length})`,
+            this._hostNode.querySelectorAll(".custom-fields")
+        );
         new ExpanderControl(
             "post-content",
             "Content",
@@ -105,6 +112,13 @@ class PostEditSidebarControl extends events.EventTarget {
             this._poolControl = new PoolInputControl(
                 this._poolInputNode,
                 post.pools
+            );
+        }
+
+        if (this._customFieldInputNode) {
+            this._customFieldControl = new CustomFieldInputControl(
+                this._customFieldInputNode,
+                post.customFields
             );
         }
 
@@ -261,6 +275,7 @@ class PostEditSidebarControl extends events.EventTarget {
         this._notesExpander.title = `Notes (${this._post.notes.length})`;
         this._tagsExpander.title = `Tags (${this._post.tags.length})`;
         this._poolsExpander.title = `Pools (${this._post.pools.length})`;
+        this._customFieldsExpander.title = `Custom Fields (${Object.keys(this._post.customFields).length})`;
     }
 
     _evtPostContentChange(e) {
@@ -483,6 +498,10 @@ class PostEditSidebarControl extends events.EventTarget {
 
     get _poolInputNode() {
         return this._formNode.querySelector(".pools input");
+    }
+
+    get _customFieldInputNode() {
+        return this._formNode.querySelector(".custom-fields input");
     }
 
     get _loopVideoInputNode() {

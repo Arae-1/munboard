@@ -91,6 +91,15 @@ Promise.resolve()
             controllers.push(
                 require("./controllers/pool_categories_controller.js")
             );
+            controllers.push(
+                require("./controllers/custom_field_create_controller.js")
+            );
+            controllers.push(
+                require("./controllers/custom_field_controller.js")
+            );
+            controllers.push(
+                require("./controllers/custom_field_list_controller.js")
+            );
             controllers.push(require("./controllers/settings_controller.js"));
             controllers.push(require("./controllers/user_controller.js"));
             controllers.push(require("./controllers/user_list_controller.js"));
