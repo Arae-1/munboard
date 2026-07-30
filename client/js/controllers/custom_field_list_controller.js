@@ -3,6 +3,7 @@
 const router = require("../router.js");
 const api = require("../api.js");
 const uri = require("../util/uri.js");
+const misc = require("../util/misc.js");
 const CustomFieldList = require("../models/custom_field_list.js");
 const topNavigation = require("../models/top_navigation.js");
 const CustomFieldsHeaderView = require("../views/custom_fields_header_view.js");
@@ -25,33 +26,57 @@ class CustomFieldListController {
             return;
         }
 
+        this._ctx = ctx;
+        this._allCustomFields = [];
+
         topNavigation.activate("custom-fields");
         topNavigation.setTitle("Listing custom fields");
 
         const hostNode = document.getElementById("content-holder");
-        const pageHeaderHolderNode = document.createElement("div");
-        pageHeaderHolderNode.classList.add("page-header-holder");
-        const pageContentHolderNode = document.createElement("div");
-        pageContentHolderNode.classList.add("page-content-holder");
         hostNode.innerHTML = "";
-        hostNode.appendChild(pageHeaderHolderNode);
-        hostNode.appendChild(pageContentHolderNode);
+
+        this._pageHeaderHolderNode = document.createElement("div");
+        this._pageHeaderHolderNode.classList.add("page-header-holder");
+        this._pageContentHolderNode = document.createElement("div");
+        this._pageContentHolderNode.classList.add("page-content-holder");
+        hostNode.appendChild(this._pageHeaderHolderNode);
+        hostNode.appendChild(this._pageContentHolderNode);
 
         this._headerView = new CustomFieldsHeaderView({
-            hostNode: pageHeaderHolderNode,
+            hostNode: this._pageHeaderHolderNode,
+            parameters: ctx.parameters,
             canCreate: api.hasPrivilege("custom_field_create"),
         });
+        this._headerView.addEventListener("navigate", (e) =>
+            this._evtNavigate(e)
+        );
 
-        this._loadPage(pageContentHolderNode);
+        this._loadPage();
     }
 
-    _loadPage(hostNode) {
+    showSuccess(message) {
+        const views = require("../util/views.js");
+        views.showSuccess(this._pageContentHolderNode, message);
+    }
+
+    showError(message) {
+        const views = require("../util/views.js");
+        views.showError(this._pageContentHolderNode, message);
+    }
+
+    _evtNavigate(e) {
+        router.showNoDispatch(
+            uri.formatClientLink("custom-fields", e.detail.parameters)
+        );
+        Object.assign(this._ctx.parameters, e.detail.parameters);
+        this._renderFiltered();
+    }
+
+    _loadPage() {
         CustomFieldList.get(fields).then(
             (response) => {
-                this._view = new CustomFieldsPageView({
-                    hostNode: hostNode,
-                    customFields: response.results,
-                });
+                this._allCustomFields = response.results;
+                this._renderFiltered();
             },
             (error) => {
                 this._view = new EmptyView();
@@ -60,22 +85,69 @@ class CustomFieldListController {
         );
     }
 
-    showSuccess(message) {
-        const hostNode = document.getElementById("content-holder");
-        const messagesNode = hostNode.querySelector(".messages");
-        if (messagesNode) {
-            const views = require("../util/views.js");
-            views.showSuccess(messagesNode.parentNode, message);
-        }
-    }
+    _renderFiltered() {
+        const query = (this._ctx.parameters.query || "").toLowerCase().trim();
+        let results = [...this._allCustomFields];
 
-    showError(message) {
-        const hostNode = document.getElementById("content-holder");
-        const messagesNode = hostNode.querySelector(".messages");
-        if (messagesNode) {
-            const views = require("../util/views.js");
-            views.showError(messagesNode.parentNode, message);
+        if (query) {
+            const tokens = query.split(/\s+/);
+            for (let token of tokens) {
+                let negate = false;
+                let term = token;
+                if (token.startsWith("-")) {
+                    negate = true;
+                    term = token.slice(1);
+                }
+
+                if (term.startsWith("name:")) {
+                    const val = term.slice(5);
+                    results = results.filter((cf) => {
+                        const match = cf.name.toLowerCase().includes(val);
+                        return negate ? !match : match;
+                    });
+                } else if (term.startsWith("color:")) {
+                    const val = term.slice(6);
+                    results = results.filter((cf) => {
+                        const match = cf.color && cf.color.toLowerCase().includes(val);
+                        return negate ? !match : match;
+                    });
+                } else {
+                    results = results.filter((cf) => {
+                        const match =
+                            cf.name.toLowerCase().includes(term) ||
+                            (cf.description && cf.description.toLowerCase().includes(term)) ||
+                            (cf.color && cf.color.toLowerCase().includes(term));
+                        return negate ? !match : match;
+                    });
+                }
+            }
         }
+
+        // Handle sort
+        const sortQuery = this._ctx.parameters.query || "";
+        if (sortQuery.includes("-sort:name")) {
+            results.sort((a, b) => b.name.localeCompare(a.name));
+        } else if (sortQuery.includes("-sort:creation-time")) {
+            results.sort((a, b) => b.creationTime.localeCompare(a.creationTime));
+        } else if (sortQuery.includes("sort:creation-time")) {
+            results.sort((a, b) => a.creationTime.localeCompare(b.creationTime));
+        } else if (sortQuery.includes("-sort:description")) {
+            results.sort((a, b) => (b.description || "").localeCompare(a.description || ""));
+        } else if (sortQuery.includes("sort:description")) {
+            results.sort((a, b) => (a.description || "").localeCompare(b.description || ""));
+        } else if (sortQuery.includes("-sort:color")) {
+            results.sort((a, b) => (b.color || "").localeCompare(a.color || ""));
+        } else if (sortQuery.includes("sort:color")) {
+            results.sort((a, b) => (a.color || "").localeCompare(b.color || ""));
+        } else {
+            results.sort((a, b) => a.name.localeCompare(b.name));
+        }
+
+        this._view = new CustomFieldsPageView({
+            hostNode: this._pageContentHolderNode,
+            customFields: results,
+            parameters: this._ctx.parameters,
+        });
     }
 }
 

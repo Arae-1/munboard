@@ -141,9 +141,14 @@
                                 --><i class='fa fa-wrench'></i><!--
                             --></a><!--
                         --><% } %><!--
-                        --><span class='custom-field-name'><%- name %></span><!--
-                        --><span class='custom-field-value'><%- ctx.post.customFields[name] %></span><!--
-                        -->&#32;<!--
+                        --><% if (ctx.canViewCustomFields) { %><!--
+                            --><a href='<%- ctx.formatClientLink('custom-fields') %>'><!--
+                        --><% } %><!--
+                            --><%- name %><!--
+                        --><% if (ctx.canViewCustomFields) { %><!--
+                            --></a><!--
+                        --><% } %>&#32;<!--
+                        --><span class='custom-field-usages' data-pseudo-content='<%- ctx.post.customFields[name] %>'></span><!--
                     --></li><!--
                 --><% } %><!--
             --></ul>

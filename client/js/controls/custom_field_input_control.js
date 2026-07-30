@@ -113,8 +113,8 @@ class CustomFieldInputControl extends events.EventTarget {
         nameNode.textContent = name;
 
         const valueNode = document.createElement("span");
-        valueNode.classList.add("custom-field-value");
-        valueNode.textContent = value;
+        valueNode.classList.add("custom-field-usages");
+        valueNode.setAttribute("data-pseudo-content", value);
 
         const listItemNode = document.createElement("li");
         listItemNode.setAttribute("data-name", name);
@@ -128,9 +128,9 @@ class CustomFieldInputControl extends events.EventTarget {
     _updateListItemNode(name, value) {
         const listItemNode = this._listNode.querySelector(`li[data-name="${CSS.escape(name)}"]`);
         if (listItemNode) {
-            const valueNode = listItemNode.querySelector(".custom-field-value");
-            if (valueNode) {
-                valueNode.textContent = value;
+        const valueNode = listItemNode.querySelector(".custom-field-usages");
+        if (valueNode) {
+            valueNode.setAttribute("data-pseudo-content", value);
             }
         }
     }

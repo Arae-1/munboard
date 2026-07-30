@@ -28,18 +28,26 @@ ul.compact-custom-fields
         white-space: nowrap
         overflow: hidden
         text-overflow: ellipsis
-        .custom-field-name
-            font-weight: bold
-            margin-right: 0.5em
-        .custom-field-value
-            color: $main-color
+        transition: background-color 0.5s linear
+        a
+            display: inline
+        a:focus
+            outline: 0
+            box-shadow: inset 0 0 0 2px $main-color
+    i
+        padding-right: 0.4em
 
-    .remove-custom-field
+div.custom-field-input, ul.compact-custom-fields
+    .custom-field-usages, .remove-custom-field
         color: $inactive-link-color
         unselectable()
+    .custom-field-usages
+        font-size: 90%
+        margin-left: 0.7em
+    .remove-custom-field
         margin-right: 0.5em
 
 .darktheme
     div.custom-field-input, ul.compact-custom-fields
-        .remove-custom-field
+        .custom-field-usages, .remove-custom-field
             color: $inactive-link-color-darktheme
