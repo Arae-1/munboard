@@ -34,6 +34,7 @@ diesel::table! {
         description -> Text,
         color -> Text,
         creation_time -> Timestamptz,
+        last_edit_time -> Timestamptz,
     }
 }
 

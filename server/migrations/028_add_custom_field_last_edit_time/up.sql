@@ -1,0 +1,1 @@
+ALTER TABLE custom_field ADD COLUMN last_edit_time TIMESTAMPTZ NOT NULL DEFAULT NOW();

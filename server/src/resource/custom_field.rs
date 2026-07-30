@@ -1,19 +1,18 @@
-use crate::app::Context;
 use crate::model::custom_field::CustomField;
 use crate::resource;
 use crate::resource::field::Mask;
-use crate::schema::custom_field;
+use crate::schema::{custom_field, post_custom_field};
 use crate::string::SmallString;
 use crate::time::DateTime;
 use diesel::{ExpressionMethods, PgConnection, QueryDsl, QueryResult, RunQueryDsl};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_with::skip_serializing_none;
 use server_macros::non_nullable_options;
 use std::collections::HashMap;
 use strum::EnumString;
 use utoipa::ToSchema;
 
-#[derive(Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Clone, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomFieldValue {
     pub name: SmallString,
@@ -53,32 +52,29 @@ pub struct CustomFieldInfo {
 impl CustomFieldInfo {
     pub fn new(
         conn: &mut PgConnection,
-        _ctx: &Context,
         custom_field: CustomField,
         fields: Mask<Field>,
     ) -> QueryResult<Self> {
-        Self::new_batch(conn, _ctx, vec![custom_field], fields).map(resource::single)
+        Self::new_batch(conn, vec![custom_field], fields).map(resource::single)
     }
 
     pub fn new_from_id(
         conn: &mut PgConnection,
-        ctx: &Context,
         custom_field_id: i64,
         fields: Mask<Field>,
     ) -> QueryResult<Self> {
-        Self::new_batch_from_ids(conn, ctx, &[custom_field_id], fields).map(resource::single)
+        Self::new_batch_from_ids(conn, &[custom_field_id], fields).map(resource::single)
     }
 
     pub fn new_batch(
         _conn: &mut PgConnection,
-        _ctx: &Context,
         custom_fields: Vec<CustomField>,
         fields: Mask<Field>,
     ) -> QueryResult<Vec<Self>> {
         let results = custom_fields
             .into_iter()
             .map(|cf| Self {
-                version: fields[Field::Version].then_some(cf.creation_time),
+                version: fields[Field::Version].then_some(cf.last_edit_time),
                 id: fields[Field::Id].then_some(cf.id),
                 name: fields[Field::Name].then_some(cf.name),
                 description: fields[Field::Description].then_some(cf.description),
@@ -91,7 +87,6 @@ impl CustomFieldInfo {
 
     pub fn new_batch_from_ids(
         conn: &mut PgConnection,
-        ctx: &Context,
         custom_field_ids: &[i64],
         fields: Mask<Field>,
     ) -> QueryResult<Vec<Self>> {
@@ -99,7 +94,7 @@ impl CustomFieldInfo {
             .filter(custom_field::id.eq_any(custom_field_ids))
             .load(conn)?;
         let cf_fields = resource::order_as(unordered, custom_field_ids);
-        Self::new_batch(conn, ctx, cf_fields, fields)
+        Self::new_batch(conn, cf_fields, fields)
     }
 }
 
@@ -107,8 +102,6 @@ pub fn get_custom_fields_for_posts(
     conn: &mut PgConnection,
     post_ids: &[i64],
 ) -> QueryResult<Vec<Vec<CustomFieldValue>>> {
-    use crate::schema::{custom_field, post_custom_field};
-
     let values: Vec<(i64, SmallString, i64)> = post_custom_field::table
         .inner_join(custom_field::table)
         .select((post_custom_field::post_id, custom_field::name, post_custom_field::value))

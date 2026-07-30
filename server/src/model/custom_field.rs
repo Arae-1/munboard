@@ -13,7 +13,7 @@ pub struct NewCustomField<'a> {
     pub color: &'a str,
 }
 
-#[derive(Clone, Debug, AsChangeset, Identifiable, Queryable, Selectable)]
+#[derive(Clone, PartialEq, Eq, Debug, AsChangeset, Identifiable, Queryable, Selectable)]
 #[diesel(table_name = custom_field)]
 #[diesel(check_for_backend(Pg))]
 pub struct CustomField {
@@ -22,4 +22,5 @@ pub struct CustomField {
     pub description: SmallString,
     pub color: SmallString,
     pub creation_time: DateTime,
+    pub last_edit_time: DateTime,
 }

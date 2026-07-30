@@ -1,6 +1,6 @@
 use crate::api::doc::CUSTOM_FIELD_TAG;
 use crate::api::error::{ApiError, ApiResult};
-use crate::api::{DeleteBody, PagedResponse, ResourceParams};
+use crate::api::{DeleteBody, ResourceParams, UnpagedResponse, error};
 use crate::app::AppState;
 use crate::config::Action;
 use crate::extract::{Ctx, Json, Path, Query};
@@ -8,11 +8,9 @@ use crate::model::custom_field::{CustomField, NewCustomField};
 use crate::model::enums::{ResourceProperty, ResourceType};
 use crate::resource::custom_field::{CustomFieldInfo, Field};
 use crate::schema::custom_field;
-use crate::snapshot::custom_field::SnapshotData;
 use crate::string::SmallString;
 use crate::time::DateTime;
 use crate::{api, snapshot};
-use diesel::dsl::exists;
 use diesel::{Insertable, OptionalExtension, QueryDsl, RunQueryDsl, SaveChangesDsl};
 use serde::Deserialize;
 use utoipa::ToSchema;
@@ -21,44 +19,39 @@ use utoipa_axum::routes;
 
 pub fn routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
-        .routes(routes!(list))
-        .routes(routes!(create))
+        .routes(routes!(list, create))
         .routes(routes!(get, update, delete))
 }
 
 /// Lists all custom fields.
+///
+/// Doesn't use paging.
 #[utoipa::path(
     get,
     path = "/custom-fields",
     tag = CUSTOM_FIELD_TAG,
     params(ResourceParams),
     responses(
-        (status = 200, body = PagedResponse<CustomFieldInfo>),
+        (status = 200, body = UnpagedResponse<CustomFieldInfo>),
         (status = 403, description = "Privileges are too low"),
     ),
 )]
 async fn list(
     Ctx(ctx, connection_pool): Ctx,
     Query(resource): Query<ResourceParams<Field>>,
-) -> ApiResult<Json<PagedResponse<CustomFieldInfo>>> {
+) -> ApiResult<Json<UnpagedResponse<CustomFieldInfo>>> {
     ctx.verify_privilege(Action::CustomFieldList)?;
 
     connection_pool
         .transaction(move |conn| {
-            let all_fields: Vec<CustomField> = custom_field::table
+            let all_custom_fields: Vec<CustomField> = custom_field::table
                 .order(custom_field::name)
                 .load(conn)?;
-            let total = all_fields.len() as i64;
-            let results = CustomFieldInfo::new_batch(conn, &ctx, all_fields, resource.fields)?;
-            Ok::<_, ApiError>(Json(PagedResponse {
-                query: resource.query,
-                offset: 0,
-                limit: total,
-                total,
-                results,
-            }))
+            CustomFieldInfo::new_batch(conn, all_custom_fields, resource.fields)
+                .map(|results| UnpagedResponse { results })
         })
         .await
+        .map(Json)
 }
 
 /// Retrieves information about an existing custom field.
@@ -85,12 +78,12 @@ async fn get(
 
     connection_pool
         .transaction(move |conn| {
-            let cf_exists: bool =
-                diesel::select(exists(custom_field::table.find(custom_field_id))).first(conn)?;
-            if !cf_exists {
-                return Err(ApiError::NotFound(ResourceType::CustomField));
-            }
-            CustomFieldInfo::new_from_id(conn, &ctx, custom_field_id, params.fields)
+            let cf: CustomField = custom_field::table
+                .find(custom_field_id)
+                .first(conn)
+                .optional()?
+                .ok_or(ApiError::NotFound(ResourceType::CustomField))?;
+            CustomFieldInfo::new(conn, cf, params.fields)
                 .map(Json)
                 .map_err(ApiError::from)
         })
@@ -109,7 +102,7 @@ struct CustomFieldCreateBody {
 /// Creates a new custom field.
 #[utoipa::path(
     post,
-    path = "/custom-field",
+    path = "/custom-fields",
     tag = CUSTOM_FIELD_TAG,
     params(ResourceParams),
     request_body = CustomFieldCreateBody,
@@ -126,27 +119,22 @@ async fn create(
 ) -> ApiResult<Json<CustomFieldInfo>> {
     ctx.verify_privilege(Action::CustomFieldCreate)?;
 
-    let cf = connection_pool
-        .transaction({
-            move |conn| {
-                let result = NewCustomField {
-                    name: &body.name,
-                    description: body.description.as_deref().unwrap_or(""),
-                    color: body.color.as_deref().unwrap_or(""),
-                }
-                .insert_into(custom_field::table)
-                .get_result(conn);
-                let custom_field: CustomField =
-                    api::error::map_unique_violation(result, ResourceProperty::CustomFieldName)?;
-
-                let cf_data = SnapshotData::retrieve(custom_field.clone());
-                snapshot::custom_field::creation_snapshot(conn, ctx.client, custom_field.id, cf_data)?;
-                Ok::<_, ApiError>(custom_field)
+    let custom_field = connection_pool
+        .transaction(move |conn| {
+            let result = NewCustomField {
+                name: &body.name,
+                description: body.description.as_deref().unwrap_or(""),
+                color: body.color.as_deref().unwrap_or(""),
             }
+            .insert_into(custom_field::table)
+            .get_result(conn);
+            let cf = error::map_unique_violation(result, ResourceProperty::CustomFieldName)?;
+            snapshot::custom_field::creation_snapshot(conn, ctx.client, &cf)?;
+            Ok::<_, ApiError>(cf)
         })
         .await?;
     connection_pool
-        .transaction(move |conn| CustomFieldInfo::new(conn, &ctx, cf, params.fields))
+        .transaction(move |conn| CustomFieldInfo::new(conn, custom_field, params.fields))
         .await
         .map(Json)
 }
@@ -163,7 +151,7 @@ struct CustomFieldUpdateBody {
     color: Option<SmallString>,
 }
 
-/// Updates an existing custom field (rename).
+/// Updates an existing custom field.
 #[utoipa::path(
     put,
     path = "/custom-field/{id}",
@@ -187,49 +175,35 @@ async fn update(
     Query(params): Query<ResourceParams<Field>>,
     Json(body): Json<CustomFieldUpdateBody>,
 ) -> ApiResult<Json<CustomFieldInfo>> {
-    let cf_id = connection_pool
-        .transaction({
-            let ctx = ctx.clone();
-            move |conn| {
-                let old_cf: CustomField = custom_field::table
-                    .find(custom_field_id)
-                    .first(conn)
-                    .optional()?
-                    .ok_or(ApiError::NotFound(ResourceType::CustomField))?;
-                api::verify_version(old_cf.creation_time, body.version)?;
+    let updated_cf = connection_pool
+        .transaction(move |conn| {
+            let old_cf: CustomField = custom_field::table
+                .find(custom_field_id)
+                .first(conn)
+                .optional()?
+                .ok_or(ApiError::NotFound(ResourceType::CustomField))?;
+            api::verify_version(old_cf.last_edit_time, body.version)?;
 
-                let old_snapshot_data = SnapshotData::retrieve(old_cf.clone());
-                ctx.verify_privilege(Action::CustomFieldEditName)?;
+            ctx.verify_privilege(Action::CustomFieldEditName)?;
 
-                let mut updated_cf = old_cf.clone();
-                updated_cf.name = body.name;
-                if let Some(description) = body.description {
-                    updated_cf.description = description;
-                }
-                if let Some(color) = body.color {
-                    updated_cf.color = color;
-                }
-
-                let _: CustomField = api::error::map_unique_violation(
-                    updated_cf.save_changes(conn),
-                    ResourceProperty::CustomFieldName,
-                )?;
-
-                let updated_cf: CustomField = custom_field::table.find(custom_field_id).first(conn)?;
-                let new_snapshot_data = SnapshotData::retrieve(updated_cf.clone());
-                snapshot::custom_field::modification_snapshot(
-                    conn,
-                    ctx.client,
-                    custom_field_id,
-                    old_snapshot_data,
-                    new_snapshot_data,
-                )?;
-                Ok::<_, ApiError>(custom_field_id)
+            let mut new_cf = old_cf.clone();
+            new_cf.name = body.name;
+            if let Some(description) = body.description {
+                new_cf.description = description;
             }
+            if let Some(color) = body.color {
+                new_cf.color = color;
+            }
+            new_cf.last_edit_time = DateTime::now();
+
+            let new_cf: CustomField =
+                error::map_unique_violation(new_cf.save_changes(conn), ResourceProperty::CustomFieldName)?;
+            snapshot::custom_field::modification_snapshot(conn, ctx.client, &old_cf, &new_cf)?;
+            Ok::<_, ApiError>(new_cf)
         })
         .await?;
     connection_pool
-        .transaction(move |conn| CustomFieldInfo::new_from_id(conn, &ctx, cf_id, params.fields))
+        .transaction(move |conn| CustomFieldInfo::new(conn, updated_cf, params.fields))
         .await
         .map(Json)
 }
@@ -264,11 +238,8 @@ async fn delete(
                 .first(conn)
                 .optional()?
                 .ok_or(ApiError::NotFound(ResourceType::CustomField))?;
-            api::verify_version(cf.creation_time, *client_version)?;
-
-            let cf_data = SnapshotData::retrieve(cf);
-            snapshot::custom_field::deletion_snapshot(conn, ctx.client, custom_field_id, cf_data)?;
-
+            api::verify_version(cf.last_edit_time, *client_version)?;
+            snapshot::custom_field::deletion_snapshot(conn, ctx.client, &cf)?;
             diesel::delete(custom_field::table.find(custom_field_id)).execute(conn)?;
             Ok::<_, ApiError>(Json(()))
         })
