@@ -16,6 +16,8 @@ class CustomFieldInputControl extends events.EventTarget {
         this._editingName = null;
         this._hostNode = hostNode;
 
+        CustomFieldAutoCompleteControl.ensureFieldNamesLoaded();
+
         this._editAreaNode = template();
         this._nameInputNode = this._editAreaNode.querySelector("input.cf-name");
         this._valueInputNode = this._editAreaNode.querySelector("input.cf-value");
@@ -70,12 +72,16 @@ class CustomFieldInputControl extends events.EventTarget {
             }
         });
         this._nameInputNode.addEventListener("input", (e) => {
+            this._nameInputNode.setCustomValidity("");
             if (!this._editingName) {
                 return;
             }
             if (this._nameInputNode.value.trim() !== this._editingName) {
                 this._exitEditMode();
             }
+        });
+        this._valueInputNode.addEventListener("input", (e) => {
+            this._valueInputNode.setCustomValidity("");
         });
     }
 
@@ -105,9 +111,23 @@ class CustomFieldInputControl extends events.EventTarget {
         const name = this._nameInputNode.value.trim();
         const value = parseInt(this._valueInputNode.value, 10);
 
-        if (!name || isNaN(value)) {
+        if (!name) {
             return;
         }
+
+        if (isNaN(value)) {
+            this._valueInputNode.setCustomValidity("Value must be a number");
+            this._valueInputNode.reportValidity();
+            return;
+        }
+        this._valueInputNode.setCustomValidity("");
+
+        if (!CustomFieldAutoCompleteControl.isValidFieldName(name)) {
+            this._nameInputNode.setCustomValidity("Custom field does not exist");
+            this._nameInputNode.reportValidity();
+            return;
+        }
+        this._nameInputNode.setCustomValidity("");
 
         const color = this._selectedColor;
         this._selectedColor = null;

@@ -21,4 +21,4 @@ target/
 !/docs/**/**
 !README.md
 !LICENSE.md
-.BUGS.md.kate-swp
+*.kate-swp
