@@ -131,32 +131,11 @@
     <% } %>
 
     <% if (ctx.post.customFields && Object.keys(ctx.post.customFields).length) { %>
-        <nav class='custom-fields'>
-            <h1>Custom Fields (<%- Object.keys(ctx.post.customFields).length %>)</h1>
-            <ul class='compact-custom-fields'><!--
-                --><% for (let name of Object.keys(ctx.post.customFields).sort()) { let color = ctx.post.customFieldColors[name] || ctx.customFieldDefaultColor; %><!--
-                    --><li><!--
-                        --><% if (ctx.canViewCustomFields) { %><!--
-                            --><a href='<%- ctx.formatClientLink('custom-fields') %>' style='color:<%- color %>'><!--
-                                --><i class='fa fa-wrench'></i><!--
-                            --></a><!--
-                        --><% } else { %><!--
-                            --><i class='fa fa-wrench' style='color:<%- color %>'></i><!--
-                        --><% } %><!--
-                        --><% if (ctx.canViewCustomFields) { %><!--
-                            --><a href='<%- ctx.formatClientLink('custom-fields') %>' style='color:<%- color %>'><!--
-                            --><%- name %><!--
-                            --></a><!--
-                        --><% } else { %><!--
-                            --><span style='color:<%- color %>'><!--
-                            --><%- name %><!--
-                            --></span><!--
-                        --><% } %>&#32;<!--
-                        --><span class='custom-field-usages' data-pseudo-content='= <%- ctx.post.customFields[name] %>'></span><!--
-                    --></li><!--
-                --><% } %><!--
-            --></ul>
-        </nav>
+        <% for (let name of Object.keys(ctx.post.customFields).sort()) { let color = ctx.post.customFieldColors[name] || ctx.customFieldDefaultColor; %>
+            <section class='custom-field'>
+                <b style='color:<%- color %>'><%- ctx.getPrettyName(name) %>:</b> <%- ctx.post.customFields[name] %>
+            </section>
+        <% } %>
     <% } %>
 
     <% if (ctx.post.launchDate) { %>
