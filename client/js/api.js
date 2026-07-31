@@ -141,6 +141,10 @@ class Api extends events.EventTarget {
         return remoteConfig.contactEmail;
     }
 
+    getSecureCookie() {
+        return !!remoteConfig.secureCookie;
+    }
+
     canSendMails() {
         return !!remoteConfig.canSendMails;
     }
@@ -192,7 +196,7 @@ class Api extends events.EventTarget {
                     if (doRemember) {
                         options.expires = 365;
                     }
-                    options.secure = true;
+                    options.secure = this.getSecureCookie();
                     options.sameSite = "Strict";
                     // NOTE: The auth token is stored in a cookie readable
                     // by document.cookie, which is vulnerable to XSS.
@@ -249,7 +253,7 @@ class Api extends events.EventTarget {
             this.delete("/user-token/" + userName + "/" + userToken, {}).then(
                 (response) => {
                     const options = {};
-                    options.secure = true;
+                    options.secure = this.getSecureCookie();
                     options.sameSite = "Strict";
                     cookies.set(
                         "auth",
@@ -276,7 +280,7 @@ class Api extends events.EventTarget {
                     if (doRemember) {
                         options.expires = 365;
                     }
-                    options.secure = true;
+                    options.secure = this.getSecureCookie();
                     options.sameSite = "Strict";
                     this.createToken(this.userName, options);
                     this.user = response;

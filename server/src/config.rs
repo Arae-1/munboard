@@ -257,6 +257,8 @@ pub struct PublicConfig {
     #[serde(with = "serde_regex")]
     pub custom_field_name_regex: Regex,
     pub custom_field_default_color: SmallString,
+    #[serde(default)]
+    pub secure_cookie: bool,
     pub privileges: PrivilegeConfig,
 }
 
