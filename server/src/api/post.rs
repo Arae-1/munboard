@@ -627,8 +627,8 @@ async fn create_impl(ctx: Ctx, params: ResourceParams<Field>, body: PostCreateBo
                 checksum: content_properties.checksum,
                 checksum_md5: content_properties.md5_checksum,
                 flags,
-                source: body.source.as_deref().unwrap_or(""),
-                description: body.description.as_deref().unwrap_or(""),
+                source: body.source.as_deref().map(str::trim).unwrap_or(""),
+                description: body.description.as_deref().map(str::trim).unwrap_or(""),
                 launch_date: body.launch_date,
                 media_created_date: body.media_created_date,
             }
@@ -995,7 +995,7 @@ async fn update_impl(
                 new_snapshot_data.flags = updated_flags;
             }
             if let Some(source) = body.source {
-                ctx.verify_privilege(Action::PostScore)?;
+                ctx.verify_privilege(Action::PostEditSource)?;
 
                 new_post.source = source.clone();
                 new_snapshot_data.source = source;

@@ -14,22 +14,32 @@ pub type BoxedQuery =
     IntoBoxed<'static, InnerJoin<Select<inner_post, SqlLiteral<Integer>>, post_statistics::table>, Pg>;
 
 pub fn has_preferences(ctx: &Context) -> bool {
-    ctx.client.rank == UserRank::Anonymous && !ctx.config.anonymous_preferences.is_empty()
+    matches!(ctx.client.rank, UserRank::Anonymous | UserRank::Restricted)
+        || !ctx.config.anonymous_preferences.is_empty()
 }
 
 pub fn hidden_posts<C>(ctx: &Context, post_id_column: C) -> Option<BoxedQuery>
 where
     C: Expression<SqlType = BigInt> + QueryFragment<Pg> + Send + 'static,
 {
-    if ctx.client.rank != UserRank::Anonymous {
+    if ctx.client.rank >= UserRank::Regular {
         return None;
     }
-    let preferences = &ctx.config.anonymous_preferences;
 
     let mut query = inner_post
         .select(sql::<Integer>("0"))
         .inner_join(post_statistics::table)
         .into_boxed();
+
+    if ctx.client.rank == UserRank::Restricted {
+        return Some(
+            query
+                .filter(inner_post.field(post::safety).eq(PostSafety::Unsafe))
+                .filter(sql::<Bool>("").bind(inner_post.field(post::id).eq(post_id_column))),
+        );
+    }
+
+    let preferences = &ctx.config.anonymous_preferences;
 
     // If no preferences are specified, no posts are hidden
     if preferences.is_empty() {

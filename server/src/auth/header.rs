@@ -71,15 +71,19 @@ async fn basic_access_authentication(state: &AppState, credentials: &str) -> Res
 
     // For security reasons, don't give any indication to the user if it was the password
     // or the username that was incorrect.
-    let (user_id, rank, password_hash): (i64, UserRank, String) = user::table
+    let result: Option<(i64, UserRank, String)> = user::table
         .select((user::id, user::rank, user::password_hash))
         .filter(user::name.eq(username))
         .first(conn.as_mut())
-        .optional()?
-        .ok_or(AuthenticationError::UsernamePasswordMismatch)?;
-    auth::password::is_valid_password(&state.config, &password_hash, &password)
-        .is_ok()
-        .then_some(Client::new(Some(user_id), rank))
+        .optional()?;
+    let hash = result
+        .as_ref()
+        .map(|(_, _, h)| h.as_str())
+        .unwrap_or(auth::password::DUMMY_PASSWORD_HASH);
+    let password_ok = auth::password::is_valid_password(&state.config, hash, &password).is_ok();
+    result
+        .filter(|_| password_ok)
+        .map(|(user_id, rank, _)| Client::new(Some(user_id), rank))
         .ok_or(AuthenticationError::UsernamePasswordMismatch)
 }
 

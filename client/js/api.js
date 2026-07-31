@@ -192,6 +192,12 @@ class Api extends events.EventTarget {
                     if (doRemember) {
                         options.expires = 365;
                     }
+                    options.secure = true;
+                    options.sameSite = "Strict";
+                    // NOTE: The auth token is stored in a cookie readable
+                    // by document.cookie, which is vulnerable to XSS.
+                    // This is a known limitation; migrating to httpOnly
+                    // cookies requires architectural changes.
                     cookies.set(
                         "auth",
                         { user: userName, token: token },
@@ -243,6 +249,8 @@ class Api extends events.EventTarget {
             this.delete("/user-token/" + userName + "/" + userToken, {}).then(
                 (response) => {
                     const options = {};
+                    options.secure = true;
+                    options.sameSite = "Strict";
                     cookies.set(
                         "auth",
                         { user: userName, token: null },
@@ -268,6 +276,8 @@ class Api extends events.EventTarget {
                     if (doRemember) {
                         options.expires = 365;
                     }
+                    options.secure = true;
+                    options.sameSite = "Strict";
                     this.createToken(this.userName, options);
                     this.user = response;
                     resolve();
@@ -457,7 +467,7 @@ class Api extends events.EventTarget {
                     req.set(
                         "Authorization",
                         "Token " +
-                            new Buffer(
+                            Buffer.from(
                                 this.userName + ":" + this.token
                             ).toString("base64")
                     );

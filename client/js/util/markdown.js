@@ -179,7 +179,7 @@ function formatMarkdown(text) {
     for (let wrapper of wrappers) {
         text = wrapper.postprocess(text);
     }
-    return text;
+    return DOMPurify.sanitize(text);
 }
 
 function formatInlineMarkdown(text) {

@@ -195,7 +195,7 @@ async fn create(
                     .ok_or(ApiError::NotFound(ResourceType::PoolCategory))?;
                 let pool: Pool = NewPool {
                     category_id,
-                    description: body.description.as_deref().unwrap_or(""),
+                    description: body.description.as_deref().map(str::trim).unwrap_or(""),
                     launch_date: body.launch_date,
                 }
                 .insert_into(pool::table)

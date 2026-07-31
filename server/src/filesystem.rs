@@ -2,7 +2,7 @@ use crate::api::error::{ApiError, ApiResult};
 use crate::config::Config;
 use crate::content::hash::PostHash;
 use crate::content::thumbnail::ThumbnailCategory;
-use crate::content::upload::UploadToken;
+use crate::content::upload::{verify_magic_bytes, UploadToken};
 use crate::model::enums::MimeType;
 use axum::body::Bytes;
 use futures::StreamExt;
@@ -19,6 +19,8 @@ use strum::{Display, IntoStaticStr};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use tracing::warn;
+
+pub const MAX_URL_DOWNLOAD_SIZE: usize = 4 * 1024_usize.pow(3);
 
 /// Represents important data directories.
 #[derive(Clone, Copy, Display, IntoStaticStr)]
@@ -42,7 +44,12 @@ pub fn file_size(path: &Path) -> std::io::Result<i64> {
 ///
 /// Does not perform cleanup on error. It instead relies on the cleanup task spawned from
 /// `spawn_temporary_uploads_cleanup_task` to clean out failed uploads.
-pub async fn save_uploaded_file<S, E>(config: &Config, mut stream: S, mime_type: MimeType) -> ApiResult<UploadToken>
+pub async fn save_uploaded_file<S, E>(
+    config: &Config,
+    mut stream: S,
+    mime_type: MimeType,
+    max_size: Option<usize>,
+) -> ApiResult<UploadToken>
 where
     S: StreamExt<Item = Result<Bytes, E>> + Unpin,
     ApiError: From<E>,
@@ -51,11 +58,20 @@ where
     let upload_path = upload_token.path(config);
     create_parent_directories(&upload_path)?;
 
-    let mut file = File::create(upload_path).await?;
+    let mut total_bytes: usize = 0;
+    let mut file = File::create(&upload_path).await?;
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
+        total_bytes += chunk.len();
+        if let Some(max) = max_size
+            && total_bytes > max
+        {
+            return Err(ApiError::DownloadTooLarge(max));
+        }
         file.write_all(&chunk).await?;
     }
+
+    verify_magic_bytes(&upload_path, mime_type)?;
 
     Ok(upload_token)
 }

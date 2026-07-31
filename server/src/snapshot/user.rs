@@ -40,7 +40,6 @@ pub fn deletion_snapshot(conn: &mut PgConnection, client: Client, user: &User) -
 fn snapshot_data(user: &User) -> Value {
     json!({
         "name": user.name,
-        "email": user.email,
         "rank": user.rank,
         "avatar_style": user.avatar_style,
     })

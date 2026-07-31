@@ -848,7 +848,7 @@ mod test {
         assert_eq!(snapshot.resource_id, name.clone().into());
         assert_eq!(
             snapshot.data,
-            json!({"name": "wh_user", "email": null, "rank": "regular", "avatar_style": "gravatar"})
+            json!({"name": "wh_user", "rank": "regular", "avatar_style": "gravatar"})
         );
 
         let dt: DateTime = user::table

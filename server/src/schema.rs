@@ -296,6 +296,8 @@ diesel::table! {
         last_edit_time -> Timestamptz,
         custom_avatar_size -> Int8,
         search_seed -> Float4,
+        password_reset_token -> Nullable<Text>,
+        password_reset_expires -> Nullable<Timestamptz>,
     }
 }
 

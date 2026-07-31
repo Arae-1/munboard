@@ -120,7 +120,7 @@ fn ffmpeg_frame(path: &Path, post_type: PostType) -> ApiResult<Option<DynamicIma
     let path_str = path.to_string_lossy();
     let iter = FfmpegCommand::new_with_path(FFMPEG_PATH)
         .input(&path_str)
-        .args(["-vf", filter, "-frames:v", "1", "-f", "rawvideo", "-"])
+        .args(["-t", "30", "-vf", filter, "-frames:v", "1", "-f", "rawvideo", "-"])
         .spawn()?
         .iter()
         .map_err(|err| ApiError::FfmpegError(err.into_boxed_dyn_error()))?;

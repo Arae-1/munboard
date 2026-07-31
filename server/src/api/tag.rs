@@ -288,7 +288,7 @@ async fn create(
                 .ok_or(ApiError::NotFound(ResourceType::TagCategory))?;
             let tag: Tag = NewTag {
                 category_id,
-                description: body.description.as_deref().unwrap_or(""),
+                description: body.description.as_deref().map(str::trim).unwrap_or(""),
             }
             .insert_into(tag::table)
             .get_result(conn)?;

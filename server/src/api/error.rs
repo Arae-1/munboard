@@ -21,12 +21,16 @@ pub type ApiResult<T> = Result<T, ApiError>;
 pub enum ApiError {
     #[error("{0} already exists")]
     AlreadyExists(ResourceProperty),
+    #[error("URL targets a prohibited address")]
+    BlockedUrl,
     #[error("File of type {0} did not match request with content-type '{1}'")]
     ContentTypeMismatch(MimeType, SmallString),
     #[error("Cyclic dependency detected in {0}s")]
     CyclicDependency(ResourceType),
     #[error("Cannot delete default {0}")]
     DeleteDefault(ResourceType),
+    #[error("Download exceeds maximum size of {0} bytes")]
+    DownloadTooLarge(usize),
     #[error("SWF has no decodable images")]
     EmptySwf,
     #[error("Video file has no frames")]
@@ -47,6 +51,8 @@ pub enum ApiError {
     Hidden(ResourceType),
     #[error("Insufficient privileges")]
     InsufficientPrivileges,
+    #[error("Stated MIME type {0} does not match file magic bytes")]
+    InvalidMagicBytes(MimeType),
     InvalidEmailAddress(#[from] lettre::address::AddressError),
     InvalidEmail(#[from] lettre::error::Error),
     InvalidHeader(#[from] reqwest::header::InvalidHeaderValue),
@@ -72,8 +78,6 @@ pub enum ApiError {
     MissingSmtpInfo,
     Multipart(#[from] axum::extract::multipart::MultipartError),
     MultipartRejection(#[from] axum::extract::multipart::MultipartRejection),
-    #[error("User has no email")]
-    NoEmail,
     #[error("{0} needs at least one name")]
     NoNamesGiven(ResourceType),
     NotAnInteger(#[from] std::num::ParseIntError),
@@ -92,6 +96,8 @@ pub enum ApiError {
     StdIo(#[from] std::io::Error),
     SwfDecoding(#[from] swf::error::Error),
     TaskJoin(#[from] tokio::task::JoinError),
+    #[error("Password reset already requested")]
+    ResetAlreadyRequested,
     #[error("Password reset token is invalid")]
     UnauthorizedPasswordReset,
     UnsupportedExtension(#[from] crate::model::enums::ParseExtensionError),
@@ -111,6 +117,7 @@ impl ApiError {
             Self::QueryRejection(err) => err.status(),
             Self::ContentTypeMismatch(..)
             | Self::HeaderDeserialization(_)
+            | Self::InvalidMagicBytes(_)
             | Self::MissingContent(_)
             | Self::MissingContentType
             | Self::MissingFormData
@@ -120,8 +127,10 @@ impl ApiError {
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::AlreadyExists(_) | Self::ResourceModified => StatusCode::CONFLICT,
             Self::UnsupportedExtension(_) => StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            Self::CyclicDependency(_)
+            Self::BlockedUrl
+            | Self::CyclicDependency(_)
             | Self::DeleteDefault(_)
+            | Self::DownloadTooLarge(_)
             | Self::EmptySwf
             | Self::EmptyVideo
             | Self::ExpressionFailsRegex(..)
@@ -135,8 +144,8 @@ impl ApiError {
             | Self::InvalidTime(_)
             | Self::InvalidUploadToken
             | Self::InvalidUserRank
-            | Self::NoEmail
             | Self::NoNamesGiven(_)
+            | Self::ResetAlreadyRequested
             | Self::NotAnInteger(_)
             | Self::SelfMerge(_)
             | Self::SwfDecoding(_) => StatusCode::UNPROCESSABLE_ENTITY,
@@ -162,9 +171,11 @@ impl ApiError {
     fn category(&self) -> &'static str {
         match self {
             Self::AlreadyExists(_) => "Already Exists",
+            Self::BlockedUrl => "Blocked URL",
             Self::ContentTypeMismatch(..) => "Content Type Mismatch",
             Self::CyclicDependency(_) => "Cyclic Dependency",
             Self::DeleteDefault(_) => "Delete Default",
+            Self::DownloadTooLarge(_) => "Download Too Large",
             Self::EmptySwf => "Empty SWF",
             Self::EmptyVideo => "Empty Video",
             Self::ExpressionFailsRegex(..) => "Expression Fails Regex",
@@ -182,6 +193,7 @@ impl ApiError {
             Self::InvalidEmailAddress(_) => "Invalid Email Address",
             Self::InvalidEmail(_) => "Invalid Email",
             Self::InvalidHeader(_) => "Invalid Header",
+            Self::InvalidMagicBytes(_) => "Invalid Magic Bytes",
             Self::InvalidSort => "Invalid Sort",
             Self::InvalidTime(_) => "Invalid Time",
             Self::InvalidUploadToken => "Invalid Upload Token",
@@ -196,7 +208,6 @@ impl ApiError {
             Self::MissingSmtpInfo => "Missing SMTP Info",
             Self::Multipart(_) => "Multipart/Form-Data Error",
             Self::MultipartRejection(_) => "Multipart Rejection",
-            Self::NoEmail => "No Email",
             Self::NoNamesGiven(_) => "No Names Given",
             Self::NotAnInteger(_) => "Parse Int Error",
             Self::NotFound(_) => "Resource Not Found",
@@ -205,6 +216,7 @@ impl ApiError {
             Self::PathRejection(_) => "Path Rejection",
             Self::QueryRejection(_) => "Query Rejection",
             Self::Request(_) => "Request Error",
+            Self::ResetAlreadyRequested => "Reset Already Requested",
             Self::ResourceModified => "Resource Modified",
             Self::SelfMerge(_) => "Self Merge",
             Self::StdIo(_) => "IO Error",

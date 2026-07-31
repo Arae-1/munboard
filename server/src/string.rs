@@ -105,12 +105,16 @@ impl LargeString {
     pub fn new() -> Self {
         Self(Arc::from(""))
     }
+
+    pub fn trimmed(&self) -> &str {
+        self.0.trim()
+    }
 }
 
 impl Deref for LargeString {
     type Target = str;
     fn deref(&self) -> &Self::Target {
-        self.0.trim()
+        &self.0
     }
 }
 
@@ -129,7 +133,7 @@ impl FromSql<Text, Pg> for LargeString {
 
 impl ToSql<Text, Pg> for LargeString {
     fn to_sql<'a>(&'a self, out: &mut Output<'a, '_, Pg>) -> serialize::Result {
-        <str as ToSql<Text, Pg>>::to_sql(self, out)
+        <str as ToSql<Text, Pg>>::to_sql(self.0.trim(), out)
     }
 }
 

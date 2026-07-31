@@ -4,13 +4,13 @@ use crate::app::AppState;
 use crate::auth::password;
 use crate::content::hash;
 use crate::extract::{Json, Path};
-use crate::model::enums::ResourceType;
 use crate::schema::user;
 use crate::string::SmallString;
+use crate::time::DateTime;
 use argon2::password_hash::SaltString;
 use argon2::password_hash::rand_core::{OsRng, RngCore};
 use axum::extract::State;
-use diesel::{BoolExpressionMethods, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl};
+use diesel::{BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
 use lettre::Address;
 use lettre::message::Mailbox;
 use lettre::message::header::ContentType;
@@ -27,24 +27,15 @@ pub fn routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new().routes(routes!(request_reset, reset_password))
 }
 
-fn get_user_info(
-    conn: &mut PgConnection,
-    identifier: &str,
-) -> ApiResult<(i64, SmallString, Option<SmallString>, String)> {
-    user::table
-        .select((user::id, user::name, user::email, user::password_salt))
-        .filter(user::name.eq(identifier).or(user::email.eq(identifier)))
-        .first(conn)
-        .optional()?
-        .ok_or(ApiError::NotFound(ResourceType::User))
-}
-
 /// Sends a confirmation email to given user.
 ///
 /// The email contains a link containing a token. The token cannot be guessed,
 /// thus using such link proves that the person who requested to reset the
 /// password also owns the mailbox, which is a strong indication they are the
 /// rightful owner of the account.
+///
+/// For security, this endpoint always returns 200 regardless of whether the
+/// user exists or has an email configured, to prevent user enumeration.
 #[utoipa::path(
     get,
     path = "/password-reset/{identifier}",
@@ -53,18 +44,40 @@ fn get_user_info(
         ("identifier" = SmallString, Path, description = "User email or username"),
     ),
     responses(
-        (status = 200, description = "Password reset email sent", body = ()),
-        (status = 404, description = "User does not exist"),
-        (status = 422, description = "User hasn't provided an email address"),
+        (status = 200, description = "Request processed", body = ()),
     ),
 )]
 async fn request_reset(State(state): State<AppState>, Path(identifier): Path<SmallString>) -> ApiResult<Json<()>> {
     let smtp_info = state.config.smtp().ok_or(ApiError::MissingSmtpInfo)?;
 
     let mut conn = state.connection_pool.get().await?;
-    let (_id, username, user_email, password_salt) = get_user_info(conn.as_mut(), &identifier)?;
-    let user_email = user_email.ok_or(ApiError::NoEmail)?;
-    let user_mailbox = Mailbox::new(None, Address::from_str(&user_email)?);
+
+    let user_info = user::table
+        .select((user::id, user::name, user::email, user::password_reset_token, user::password_reset_expires))
+        .filter(user::name.eq(&identifier).or(user::email.eq(&identifier)))
+        .first::<(i64, SmallString, Option<SmallString>, Option<String>, Option<DateTime>)>(conn.as_mut())
+        .optional()?;
+
+    let (user_id, username, user_email, existing_token, existing_expiry) = match user_info {
+        Some(info) => info,
+        None => return Ok(Json(())),
+    };
+
+    let user_email = match user_email {
+        Some(email) => email,
+        None => return Ok(Json(())),
+    };
+
+    if let (Some(_), Some(expires)) = (&existing_token, &existing_expiry) {
+        if *expires > DateTime::now() {
+            return Err(ApiError::ResetAlreadyRequested);
+        }
+    }
+
+    let user_mailbox = match Address::from_str(&user_email) {
+        Ok(address) => Mailbox::new(None, address),
+        Err(_) => return Ok(Json(())),
+    };
 
     let domain = if let Some(domain) = state.config.domain.as_deref() {
         domain.to_string()
@@ -80,14 +93,19 @@ async fn request_reset(State(state): State<AppState>, Path(identifier): Path<Sma
     let domain = domain.trim_end_matches('/');
 
     let site_name = &state.config.public_info.name;
-    let username = percent_encoding::utf8_percent_encode(&username, NON_ALPHANUMERIC);
+    let username_encoded = percent_encoding::utf8_percent_encode(&username, NON_ALPHANUMERIC);
     let separator = percent_encoding::percent_encode_byte(b':');
-    let reset_token = hash::compute_url_safe_hash(password_salt.as_bytes());
-    let url = format!("{domain}/password-reset/{username}{separator}{reset_token}");
 
-    let email = Message::builder()
+    let mut random_bytes = [0u8; 32];
+    OsRng.fill_bytes(&mut random_bytes);
+    let reset_token = hash::compute_url_safe_hash(&random_bytes);
+    let expires = DateTime::from(time::OffsetDateTime::now_utc() + time::Duration::hours(1));
+
+    let url = format!("{domain}/password-reset/{username_encoded}{separator}{reset_token}");
+
+    let email = match Message::builder()
         .from(smtp_info.from.clone())
-        .to(user_mailbox)
+        .to(user_mailbox.clone())
         .subject(format!("Password reset for {site_name}"))
         .header(ContentType::TEXT_HTML)
         .body(format!(
@@ -99,9 +117,16 @@ async fn request_reset(State(state): State<AppState>, Path(identifier): Path<Sma
                     <p>Otherwise, please ignore this email.</p>
                 </body>
             </html>"
-        ))?;
+        ))
+    {
+        Ok(email) => email,
+        Err(_) => return Ok(Json(())),
+    };
 
-    // Open a remote connection to SMTP relay
+    diesel::update(user::table.find(user_id))
+        .set((user::password_reset_token.eq(&reset_token), user::password_reset_expires.eq(expires)))
+        .execute(conn.as_mut())?;
+
     let mut smtp_builder = SmtpTransport::relay(&smtp_info.host)?;
     if let (Some(smtp_username), Some(smtp_password)) = (smtp_info.username.as_ref(), smtp_info.password.as_ref()) {
         let credentials = Credentials::new(smtp_username.to_string(), smtp_password.to_string());
@@ -112,7 +137,9 @@ async fn request_reset(State(state): State<AppState>, Path(identifier): Path<Sma
     }
     let mailer = smtp_builder.build();
 
-    mailer.send(&email).map(|_| Json(())).map_err(ApiError::from)
+    let _ = mailer.send(&email);
+
+    Ok(Json(()))
 }
 
 /// Token from password reset email.
@@ -165,10 +192,30 @@ async fn reset_password(
     state
         .connection_pool
         .transaction(move |conn| {
-            let (user_id, _name, _email, password_salt) = get_user_info(conn, &username)?;
-            if confirmation.token != hash::compute_url_safe_hash(password_salt.as_bytes()) {
+            let (user_id, _name, _email, stored_token, expires) = user::table
+                .select((user::id, user::name, user::email, user::password_reset_token, user::password_reset_expires))
+                .filter(user::name.eq(&username))
+                .first::<(i64, SmallString, Option<SmallString>, Option<String>, Option<DateTime>)>(conn)
+                .optional()?
+                .ok_or(ApiError::UnauthorizedPasswordReset)?;
+
+            let stored_token = stored_token.ok_or(ApiError::UnauthorizedPasswordReset)?;
+            let expires = expires.ok_or(ApiError::UnauthorizedPasswordReset)?;
+
+            if confirmation.token != stored_token {
                 return Err(ApiError::UnauthorizedPasswordReset);
             }
+
+            if DateTime::now() > expires {
+                return Err(ApiError::UnauthorizedPasswordReset);
+            }
+
+            diesel::update(user::table.find(user_id))
+                .set((
+                    user::password_reset_token.eq(None::<String>),
+                    user::password_reset_expires.eq(None::<DateTime>),
+                ))
+                .execute(conn)?;
 
             let temporary_password = generate_temporary_password(TEMPORARY_PASSWORD_LENGTH);
 

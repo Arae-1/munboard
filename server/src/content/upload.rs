@@ -95,7 +95,7 @@ pub async fn extract<const N: usize>(
 
         match file_info {
             Some((index, mime_type)) => {
-                files[index] = filesystem::save_uploaded_file(config, field, mime_type)
+                files[index] = filesystem::save_uploaded_file(config, field, mime_type, None)
                     .await
                     .map(Some)?;
             }
@@ -129,5 +129,29 @@ fn get_mime_type(field: &Field) -> ApiResult<MimeType> {
             .map_err(Box::from)
             .map_err(ApiError::from),
         (None, None) => Err(ApiError::MissingContentType),
+    }
+}
+
+/// Verifies that the magic bytes at the start of the file at `path` match the claimed `mime_type`.
+pub fn verify_magic_bytes(path: &Path, mime_type: MimeType) -> ApiResult<()> {
+    let bytes = std::fs::read(path)?;
+    let magic = &bytes[..std::cmp::min(12, bytes.len())];
+
+    let valid = match mime_type {
+        MimeType::Png => magic.starts_with(&[0x89, 0x50, 0x4E, 0x47]),
+        MimeType::Jpeg => magic.starts_with(&[0xFF, 0xD8, 0xFF]),
+        MimeType::Gif => magic.starts_with(b"GIF8"),
+        MimeType::Bmp => magic.starts_with(b"BM"),
+        MimeType::Webp => magic.starts_with(b"RIFF") && magic.len() >= 12 && &magic[8..12] == b"WEBP",
+        MimeType::Mp4 | MimeType::Mov | MimeType::Avif => magic.len() >= 8 && &magic[4..8] == b"ftyp",
+        MimeType::Webm => magic.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]),
+        MimeType::Swf => magic.starts_with(b"FWS") || magic.starts_with(b"CWS"),
+        MimeType::Pdf => magic.starts_with(b"%PDF"),
+    };
+
+    if valid {
+        Ok(())
+    } else {
+        Err(ApiError::InvalidMagicBytes(mime_type))
     }
 }

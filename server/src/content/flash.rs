@@ -254,6 +254,7 @@ pub fn decode_define_bits_lossless(swf_tag: &swf::DefineBitsLossless) -> Result<
             out_data
         }
         (1 | 2, swf::BitmapFormat::Rgb32) => {
+            validate_size(swf_tag.width, swf_tag.height)?;
             for rgba in decoded_data.chunks_exact_mut(4) {
                 rgba.rotate_left(1);
                 if !has_alpha {
@@ -302,10 +303,13 @@ pub fn decode_define_bits_lossless(swf_tag: &swf::DefineBitsLossless) -> Result<
     Ok(RgbaImage::from_vec(u32::from(swf_tag.width), u32::from(swf_tag.height), out_data).map(DynamicImage::from))
 }
 
+const MAX_DECOMPRESSED_SIZE: u64 = 0x0800_0000; // 128MB
+
 /// Decodes zlib-compressed data.
 fn decompress_zlib(data: &[u8]) -> Result<Vec<u8>, Error> {
     let mut out_data = Vec::new();
     ZlibDecoder::new(data)
+        .take(MAX_DECOMPRESSED_SIZE)
         .read_to_end(&mut out_data)
         .map_err(|_| Error::InvalidZlibCompression)?;
     out_data.shrink_to_fit();

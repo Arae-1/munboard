@@ -2,7 +2,7 @@ use crate::api::doc::CUSTOM_FIELD_TAG;
 use crate::api::error::{ApiError, ApiResult};
 use crate::api::{DeleteBody, ResourceParams, UnpagedResponse, error};
 use crate::app::AppState;
-use crate::config::Action;
+use crate::config::{Action, RegexType};
 use crate::extract::{Ctx, Json, Path, Query};
 use crate::model::custom_field::{CustomField, NewCustomField};
 use crate::model::enums::{ResourceProperty, ResourceType};
@@ -12,10 +12,15 @@ use crate::string::SmallString;
 use crate::time::DateTime;
 use crate::{api, snapshot};
 use diesel::{Insertable, OptionalExtension, QueryDsl, RunQueryDsl, SaveChangesDsl};
+use regex::Regex;
 use serde::Deserialize;
+use std::sync::LazyLock;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
+
+static COLOR_HEX_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^#[0-9a-fA-F]{6}$").unwrap());
 
 pub fn routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
@@ -118,6 +123,15 @@ async fn create(
     Json(body): Json<CustomFieldCreateBody>,
 ) -> ApiResult<Json<CustomFieldInfo>> {
     ctx.verify_privilege(Action::CustomFieldCreate)?;
+    api::verify_matches_regex(&ctx.config, &body.name, RegexType::CustomField)?;
+            if let Some(ref color) = body.color {
+        if !color.is_empty() && !COLOR_HEX_REGEX.is_match(color) {
+            return Err(ApiError::ExpressionFailsRegex(
+                SmallString::new(&**color),
+                RegexType::CustomField,
+            ));
+        }
+    }
 
     let custom_field = connection_pool
         .transaction(move |conn| {
@@ -144,7 +158,8 @@ async fn create(
 #[serde(rename_all = "camelCase")]
 struct CustomFieldUpdateBody {
     version: DateTime,
-    name: SmallString,
+    #[serde(default)]
+    name: Option<SmallString>,
     #[serde(default)]
     description: Option<SmallString>,
     #[serde(default)]
@@ -184,15 +199,29 @@ async fn update(
                 .ok_or(ApiError::NotFound(ResourceType::CustomField))?;
             api::verify_version(old_cf.last_edit_time, body.version)?;
 
-            ctx.verify_privilege(Action::CustomFieldEditName)?;
-
             let mut new_cf = old_cf.clone();
-            new_cf.name = body.name;
+            if let Some(ref name) = body.name {
+                api::verify_matches_regex(&ctx.config, name, RegexType::CustomField)?;
+                ctx.verify_privilege(Action::CustomFieldEditName)?;
+                new_cf.name = name.clone();
+            }
             if let Some(description) = body.description {
+                if body.name.is_none() {
+                    ctx.verify_privilege(Action::CustomFieldEditName)?;
+                }
                 new_cf.description = description;
             }
-            if let Some(color) = body.color {
-                new_cf.color = color;
+            if let Some(ref color) = body.color {
+                if !color.is_empty() && !COLOR_HEX_REGEX.is_match(color) {
+                    return Err(ApiError::ExpressionFailsRegex(
+                        SmallString::new(&**color),
+                        RegexType::CustomField,
+                    ));
+                }
+                if body.name.is_none() {
+                    ctx.verify_privilege(Action::CustomFieldEditName)?;
+                }
+                new_cf.color = color.clone();
             }
             new_cf.last_edit_time = DateTime::now();
 

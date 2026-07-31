@@ -16,8 +16,10 @@ use diesel::{
 };
 use reqwest::Client;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue, REFERER};
+use reqwest::redirect;
 use std::sync::Arc;
 use std::collections::HashMap;
+use std::time::Duration;
 use std::sync::atomic::{AtomicI64, Ordering};
 use tracing::{error, warn};
 use url::Url;
@@ -62,19 +64,23 @@ pub async fn auth(State(state): State<AppState>, mut request: Request, next: Nex
 /// Sends snapshot data to webhook URLs after modifying requests.
 pub async fn post_to_webhooks(State(state): State<AppState>, request: Request, next: Next) -> ApiResult<Response> {
     let can_modify_database = matches!(request.method(), &Method::POST | &Method::PUT | &Method::DELETE);
-    let user_ip = request
-        .headers()
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.split(',').next())
-        .map(|v| v.trim().to_string())
-        .or_else(|| {
-            request
-                .headers()
-                .get("x-real-ip")
-                .and_then(|v| v.to_str().ok())
-                .map(|v| v.to_string())
-        });
+    let user_ip = if state.config.trusted_proxy {
+        request
+            .headers()
+            .get("x-forwarded-for")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split(',').next())
+            .map(|v| v.trim().to_string())
+            .or_else(|| {
+                request
+                    .headers()
+                    .get("x-real-ip")
+                    .and_then(|v| v.to_str().ok())
+                    .map(|v| v.to_string())
+            })
+    } else {
+        None
+    };
 
     let response = next.run(request).await;
 
@@ -175,7 +181,11 @@ async fn post_to_webhook(url: Url, snapshot: Arc<Snapshot>, user_ip: Option<Stri
             user_name: user_name.clone(),
         };
 
-        let client = Client::builder().default_headers(headers).build()?;
+        let client = Client::builder()
+            .default_headers(headers)
+            .redirect(redirect::Policy::none())
+            .timeout(Duration::from_secs(30))
+            .build()?;
         let response = client.post(url.clone()).json(&payload).send().await?;
         response.error_for_status().map(|_| ()).map_err(ApiError::from)
     };

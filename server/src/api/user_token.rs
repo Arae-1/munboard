@@ -155,7 +155,7 @@ async fn create(
                 let user_token = NewUserToken {
                     id: Uuid::new_v4(),
                     user_id,
-                    note: body.note.as_deref(),
+                    note: body.note.as_deref().map(str::trim),
                     enabled: body.enabled.unwrap_or(true),
                     expiration_time: body.expiration_time,
                 }

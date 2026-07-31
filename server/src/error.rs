@@ -86,6 +86,7 @@ pub enum ErrorName {
     InvalidInput,
     InvalidLastSymbol,
     InvalidLength,
+    InvalidMagicBytes,
     InvalidPadding,
     InvalidPassword,
     InvalidPhcStringField,
@@ -115,7 +116,6 @@ pub enum ErrorName {
     NegativeOverflow,
     NetworkDown,
     NetworkUnreachable,
-    NoEmail,
     NoMoreData,
     NoNamesGiven,
     NotADirectory,
@@ -177,6 +177,7 @@ pub enum ErrorName {
     TooManyArgs,
     TooManyLinks,
     UnableToSendCommand,
+    ResetAlreadyRequested,
     UnauthorizedPasswordReset,
     UnexpectedEof,
     UnexpectedOutputSize,
@@ -218,6 +219,8 @@ pub enum ErrorName {
     WriteZero,
     WrongNumberOfPathParameters,
     ZeroNotAllowed,
+    BlockedUrl,
+    DownloadTooLarge,
 }
 
 pub trait ErrorKind {
@@ -644,6 +647,7 @@ impl ErrorKind for crate::api::error::ApiError {
             Self::InvalidEmailAddress(err) => err.kind(),
             Self::InvalidEmail(err) => err.kind(),
             Self::InvalidHeader(_) => ErrorName::InvalidHeader,
+            Self::InvalidMagicBytes(_) => ErrorName::InvalidMagicBytes,
             Self::InvalidSort => ErrorName::InvalidSort,
             Self::InvalidTime(err) => err.kind(),
             Self::InvalidUploadToken => ErrorName::InvalidUploadToken,
@@ -651,7 +655,6 @@ impl ErrorKind for crate::api::error::ApiError {
             Self::Image(err) => err.kind(),
             Self::JsonRejection(err) => err.kind(),
             Self::JsonSerialization(err) => err.classify().kind(),
-            Self::NoEmail => ErrorName::NoEmail,
             Self::MissingContent(_) => ErrorName::MissingContent,
             Self::MissingContentType => ErrorName::MissingContentType,
             Self::MissingFormData => ErrorName::MissingFormData,
@@ -667,6 +670,7 @@ impl ErrorKind for crate::api::error::ApiError {
             Self::PathRejection(err) => err.kind(),
             Self::QueryRejection(err) => err.kind(),
             Self::Request(_) => ErrorName::RequestError,
+            Self::ResetAlreadyRequested => ErrorName::ResetAlreadyRequested,
             Self::ResourceModified => ErrorName::ResourceModified,
             Self::SelfMerge(_) => ErrorName::SelfMerge,
             Self::StdIo(err) => err.kind().kind(),
@@ -674,6 +678,8 @@ impl ErrorKind for crate::api::error::ApiError {
             Self::TaskJoin(err) => err.kind(),
             Self::UnauthorizedPasswordReset => ErrorName::UnauthorizedPasswordReset,
             Self::UnsupportedExtension(_) => ErrorName::UnsupportedExtension,
+            Self::BlockedUrl => ErrorName::BlockedUrl,
+            Self::DownloadTooLarge(_) => ErrorName::DownloadTooLarge,
         }
     }
 }

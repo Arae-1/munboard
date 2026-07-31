@@ -39,6 +39,10 @@ pub struct User {
     custom_avatar_size: i64,
     #[allow(dead_code)]
     search_seed: f32,
+    #[allow(dead_code)]
+    password_reset_token: Option<String>,
+    #[allow(dead_code)]
+    password_reset_expires: Option<DateTime>,
 }
 
 impl User {

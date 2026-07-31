@@ -8,14 +8,12 @@ use serde_with::skip_serializing_none;
 use server_macros::non_nullable_options;
 use strum::EnumString;
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 #[derive(Clone, Copy, EnumString)]
 #[strum(serialize_all = "camelCase")]
 pub enum Field {
     Version,
     User,
-    Token,
     Note,
     Enabled,
     ExpirationTime,
@@ -40,8 +38,6 @@ pub struct UserTokenInfo {
     version: Option<DateTime>,
     /// The user that owns the token.
     user: Option<MicroUser>,
-    /// The token that can be used to authenticate the user.
-    token: Option<Uuid>,
     /// A note that describes the token.
     note: Option<LargeString>,
     /// Whether the token is still valid for authentication.
@@ -62,7 +58,6 @@ impl UserTokenInfo {
         UserTokenInfo {
             version: fields[Field::Version].then_some(user_token.last_edit_time),
             user: fields[Field::User].then_some(user),
-            token: fields[Field::Token].then_some(user_token.id),
             note: fields[Field::Note].then_some(user_token.note),
             enabled: fields[Field::Enabled].then_some(user_token.enabled),
             expiration_time: fields[Field::ExpirationTime].then_some(user_token.expiration_time),

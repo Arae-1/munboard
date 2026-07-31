@@ -26,6 +26,8 @@ pub enum RegexType {
     TagCategory,
     Username,
     Password,
+    #[strum(serialize = "custom field")]
+    CustomField,
 }
 
 #[derive(Deserialize)]
@@ -251,6 +253,9 @@ pub struct PublicConfig {
     #[schema(value_type = String, format = Regex)]
     #[serde(with = "serde_regex")]
     pub tag_category_name_regex: Regex,
+    #[schema(value_type = String, format = Regex)]
+    #[serde(with = "serde_regex")]
+    pub custom_field_name_regex: Regex,
     pub custom_field_default_color: SmallString,
     pub privileges: PrivilegeConfig,
 }
@@ -273,6 +278,8 @@ pub struct Config {
     pub pool_category_regex: Regex,
     pub log_filter: String,
     pub auto_explain: bool,
+    #[serde(default)]
+    pub trusted_proxy: bool,
     pub thumbnails: ThumbnailConfig,
     pub smtp: Option<SmtpConfig>,
     pub anonymous_preferences: AnonymousPreferences,
@@ -301,6 +308,7 @@ impl Config {
             RegexType::TagCategory => &self.public_info.tag_category_name_regex,
             RegexType::Username => &self.public_info.username_regex,
             RegexType::Password => &self.public_info.password_regex,
+            RegexType::CustomField => &self.public_info.custom_field_name_regex,
         }
     }
 

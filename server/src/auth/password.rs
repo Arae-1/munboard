@@ -3,6 +3,9 @@ use argon2::password_hash::{Error, PasswordHash, PasswordHasher, PasswordVerifie
 use argon2::{Algorithm, Params, Version};
 use argon2::{Argon2, Error as ArgonError};
 
+pub const DUMMY_PASSWORD_HASH: &str =
+    "$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
 /// Takes a plaintext `password` and hashes it using a cryptographically secure,
 /// memory-hard hash: Argon2id. A randomly generated `salt` is mixed in with the
 /// hash to protect against rainbow table attacks.
