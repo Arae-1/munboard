@@ -30,6 +30,7 @@ class CustomFieldController {
                 this._view = new CustomFieldView({
                     customField: customField,
                     section: section,
+                    customFieldDefaultColor: api.getCustomFieldDefaultColor(),
                     canEditAnything: api.hasPrivilege("custom_field_edit_name"),
                     canEditName: api.hasPrivilege("custom_field_edit_name"),
                     canEditDescription: api.hasPrivilege("custom_field_edit_name"),

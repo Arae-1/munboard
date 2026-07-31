@@ -1,5 +1,5 @@
 <div class='content-wrapper' id='custom-field'>
-    <h1<% if (ctx.customField.color) { %> style='color:<%- ctx.customField.color %>'<% } %>><%- ctx.customField.name %></h1>
+    <h1 style='color:<%- ctx.customField.color || customFieldDefaultColor %>'><%- ctx.customField.name %></h1>
     <nav class='buttons'><!--
         --><ul><!--
             --><li data-name='summary'><a href='<%- ctx.formatClientLink('custom-field', ctx.customField.id) %>'>Summary</a></li><!--

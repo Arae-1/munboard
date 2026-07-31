@@ -251,6 +251,7 @@ pub struct PublicConfig {
     #[schema(value_type = String, format = Regex)]
     #[serde(with = "serde_regex")]
     pub tag_category_name_regex: Regex,
+    pub custom_field_default_color: SmallString,
     pub privileges: PrivilegeConfig,
 }
 

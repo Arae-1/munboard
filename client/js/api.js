@@ -149,6 +149,10 @@ class Api extends events.EventTarget {
         return !!remoteConfig.enableSafety;
     }
 
+    getCustomFieldDefaultColor() {
+        return remoteConfig.customFieldDefaultColor || "#888888";
+    }
+
     hasPrivilege(lookup) {
         let minViableRank = null;
         for (let p of Object.keys(remoteConfig.privileges)) {

@@ -25,6 +25,7 @@ class PostReadonlySidebarControl extends events.EventTarget {
             template({
                 post: this._post,
                 enableSafety: api.safetyEnabled(),
+                customFieldDefaultColor: api.getCustomFieldDefaultColor(),
                 canListPosts: api.hasPrivilege("post_list"),
                 canEditPosts: api.hasPrivilege("post_edit"),
                 canViewTags: api.hasPrivilege("tag_view"),

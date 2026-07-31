@@ -81,6 +81,9 @@ tag_category_name_regex = "^[^\\s%+#/]+$"
 
 # contact_email = example: bob@example.com. # Meant for manual password reset procedures
 
+# Default color for custom fields that don't have a color set
+custom_field_default_color = "#888888"
+
 [public_info.privileges]
 user_create_self           = "anonymous" # Registration permission
 user_create_any            = "administrator"

@@ -1,6 +1,6 @@
 <div class='custom-field-delete'>
     <form>
-        <p>Are you sure you want to delete the custom field <strong<% if (ctx.customField.color) { %> style='color:<%- ctx.customField.color %>'<% } %>><%- ctx.customField.name %></strong>?</p>
+        <p>Are you sure you want to delete the custom field <strong style='color:<%- ctx.customField.color || customFieldDefaultColor %>'><%- ctx.customField.name %></strong>?</p>
         <p>This will also remove the field from all posts it's assigned to.</p>
 
         <ul class='input'>
