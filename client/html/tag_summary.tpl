@@ -35,7 +35,7 @@
 
     <section class='description'>
         <hr/>
-        <%- ctx.makeMarkdown(ctx.tag.description || 'This tag has no description yet.') %>
+        <%= ctx.makeMarkdown(ctx.tag.description || 'This tag has no description yet.') %>
         <p>This tag has <a href='<%- ctx.formatClientLink('posts', {query: ctx.escapeTagName(ctx.tag.names[0])}) %>'><%- ctx.tag.postCount %> usage(s)</a>.</p>
     </section>
 </div>

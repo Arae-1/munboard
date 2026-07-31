@@ -3,7 +3,7 @@
         <% if (ctx.customField.description) { %>
             <section>
                 Description:<br/>
-                <%- ctx.makeMarkdown(ctx.customField.description) %>
+                <%= ctx.makeMarkdown(ctx.customField.description) %>
             </section>
         <% } %>
 

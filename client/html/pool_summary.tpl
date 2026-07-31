@@ -17,7 +17,7 @@
 
     <section class='description'>
         <hr/>
-        <%- ctx.makeMarkdown(ctx.pool.description || 'This pool has no description yet.') %>
+        <%= ctx.makeMarkdown(ctx.pool.description || 'This pool has no description yet.') %>
         <p>This pool has <a href='<%- ctx.formatClientLink('posts', {query: 'pool:' + ctx.pool.searchableName}) %>'><%- ctx.pool.postCount %> post(s)</a>.</p>
     </section>
 
