@@ -134,7 +134,7 @@
         <nav class='custom-fields'>
             <h1>Custom Fields (<%- Object.keys(ctx.post.customFields).length %>)</h1>
             <ul class='compact-custom-fields'><!--
-                --><% for (let name of Object.keys(ctx.post.customFields).sort()) { %><!--
+                --><% for (let name of Object.keys(ctx.post.customFields).sort()) { let color = ctx.post.customFieldColors[name]; %><!--
                     --><li><!--
                         --><% if (ctx.canViewCustomFields) { %><!--
                             --><a href='<%- ctx.formatClientLink('custom-fields') %>'><!--
@@ -142,7 +142,7 @@
                             --></a><!--
                         --><% } %><!--
                         --><% if (ctx.canViewCustomFields) { %><!--
-                            --><a href='<%- ctx.formatClientLink('custom-fields') %>'><!--
+                            --><a href='<%- ctx.formatClientLink('custom-fields') %>'<% if (color) { %> style='color:<%- color %>'<% } %>><!--
                         --><% } %><!--
                             --><%- name %><!--
                         --><% if (ctx.canViewCustomFields) { %><!--

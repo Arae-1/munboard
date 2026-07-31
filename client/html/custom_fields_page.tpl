@@ -36,7 +36,7 @@
                     <tr>
                         <td class='name'>
                             <ul>
-                                <li><a href='<%- ctx.formatClientLink('custom-field', cf.id) %>'><%- cf.name %></a></li>
+                                <li><a href='<%- ctx.formatClientLink('custom-field', cf.id) %>'<% if (cf.color) { %> style='color:<%- cf.color %>'<% } %>><%- cf.name %></a></li>
                             </ul>
                         </td>
                         <td class='description'>

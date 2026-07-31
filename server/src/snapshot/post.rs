@@ -53,9 +53,9 @@ impl SnapshotData {
             .order(post_feature::time.desc())
             .first(conn)
             .optional()?;
-        let custom_field_values: Vec<(SmallString, i64)> = post_custom_field::table
+        let custom_field_values: Vec<(SmallString, i64, SmallString)> = post_custom_field::table
             .inner_join(custom_field::table)
-            .select((custom_field::name, post_custom_field::value))
+            .select((custom_field::name, post_custom_field::value, custom_field::color))
             .filter(post_custom_field::post_id.eq(post.id))
             .load(conn)?;
         Ok(Self {
@@ -72,7 +72,7 @@ impl SnapshotData {
             featured: latest_feature == Some(post.id),
             custom_fields: custom_field_values
                 .into_iter()
-                .map(|(name, value)| CustomFieldValue { name, value })
+                .map(|(name, value, color)| CustomFieldValue { name, value, color })
                 .collect(),
         })
     }

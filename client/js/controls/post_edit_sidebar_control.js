@@ -118,7 +118,8 @@ class PostEditSidebarControl extends events.EventTarget {
         if (this._customFieldInputNode) {
             this._customFieldControl = new CustomFieldInputControl(
                 this._customFieldInputNode,
-                post.customFields
+                post.customFields,
+                post.customFieldColors
             );
         }
 

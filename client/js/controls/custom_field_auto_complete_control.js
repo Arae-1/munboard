@@ -12,7 +12,7 @@ class CustomFieldAutoCompleteControl extends AutoCompleteControl {
             const term = misc.escapeSearchTerm(text);
 
             return new Promise((resolve, reject) => {
-                CustomFieldList.get(["id", "name", "description"]).then(
+                CustomFieldList.get(["id", "name", "description", "color"]).then(
                     (response) => {
                         const matches = response.results
                             .filter((cf) =>

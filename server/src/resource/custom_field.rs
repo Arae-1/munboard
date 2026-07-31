@@ -17,6 +17,7 @@ use utoipa::ToSchema;
 pub struct CustomFieldValue {
     pub name: SmallString,
     pub value: i64,
+    pub color: SmallString,
 }
 
 #[derive(Clone, Copy, EnumString)]
@@ -102,15 +103,15 @@ pub fn get_custom_fields_for_posts(
     conn: &mut PgConnection,
     post_ids: &[i64],
 ) -> QueryResult<Vec<Vec<CustomFieldValue>>> {
-    let values: Vec<(i64, SmallString, i64)> = post_custom_field::table
+    let values: Vec<(i64, SmallString, i64, SmallString)> = post_custom_field::table
         .inner_join(custom_field::table)
-        .select((post_custom_field::post_id, custom_field::name, post_custom_field::value))
+        .select((post_custom_field::post_id, custom_field::name, post_custom_field::value, custom_field::color))
         .filter(post_custom_field::post_id.eq_any(post_ids))
         .load(conn)?;
 
     let mut map: HashMap<i64, Vec<CustomFieldValue>> = HashMap::new();
-    for (post_id, name, value) in values {
-        map.entry(post_id).or_default().push(CustomFieldValue { name, value });
+    for (post_id, name, value, color) in values {
+        map.entry(post_id).or_default().push(CustomFieldValue { name, value, color });
     }
     Ok(post_ids.iter().map(|id| map.remove(id).unwrap_or_default()).collect())
 }

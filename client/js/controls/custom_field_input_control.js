@@ -9,9 +9,11 @@ const CustomFieldAutoCompleteControl = require("./custom_field_auto_complete_con
 const template = views.getTemplate("custom-field-input");
 
 class CustomFieldInputControl extends events.EventTarget {
-    constructor(hostNode, customFields) {
+    constructor(hostNode, customFields, customFieldColors) {
         super();
         this._customFields = customFields;
+        this._customFieldColors = customFieldColors || {};
+        this._selectedColor = null;
         this._hostNode = hostNode;
 
         // dom
@@ -30,6 +32,7 @@ class CustomFieldInputControl extends events.EventTarget {
                 },
                 confirm: (cf) => {
                     this._nameInputNode.value = cf.name;
+                    this._selectedColor = cf.color;
                 },
                 verticalShift: -2,
             }
@@ -44,7 +47,7 @@ class CustomFieldInputControl extends events.EventTarget {
 
         // add existing custom fields
         for (let name of Object.keys(this._customFields)) {
-            const listItemNode = this._createListItemNode(name, this._customFields[name]);
+            const listItemNode = this._createListItemNode(name, this._customFields[name], this._customFieldColors[name]);
             this._listNode.appendChild(listItemNode);
         }
 
@@ -76,10 +79,14 @@ class CustomFieldInputControl extends events.EventTarget {
             return;
         }
 
+        const color = this._selectedColor;
+        this._selectedColor = null;
+
         if (Object.prototype.hasOwnProperty.call(this._customFields, name)) {
             this._updateListItemNode(name, value);
+            this._customFieldColors[name] = color || this._customFieldColors[name];
         } else {
-            const listItemNode = this._createListItemNode(name, value);
+            const listItemNode = this._createListItemNode(name, value, color);
             this._listNode.appendChild(listItemNode);
         }
 
@@ -94,15 +101,16 @@ class CustomFieldInputControl extends events.EventTarget {
 
     _removeField(name) {
         delete this._customFields[name];
+        delete this._customFieldColors[name];
         this._deleteListItemNode(name);
         this.dispatchEvent(new CustomEvent("change"));
     }
 
-    _createListItemNode(name, value) {
+    _createListItemNode(name, value, color) {
         const removalLinkNode = document.createElement("a");
         removalLinkNode.classList.add("remove-custom-field");
         removalLinkNode.setAttribute("href", "");
-        removalLinkNode.setAttribute("data-pseudo-content", "×");
+        removalLinkNode.setAttribute("data-pseudo-content", "\u00d7");
         removalLinkNode.addEventListener("click", (e) => {
             e.preventDefault();
             this._removeField(name);
@@ -111,6 +119,9 @@ class CustomFieldInputControl extends events.EventTarget {
         const nameNode = document.createElement("span");
         nameNode.classList.add("custom-field-name");
         nameNode.textContent = name;
+        if (color) {
+            nameNode.style.color = color;
+        }
 
         const valueNode = document.createElement("span");
         valueNode.classList.add("custom-field-usages");

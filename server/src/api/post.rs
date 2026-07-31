@@ -1086,8 +1086,8 @@ async fn update_impl(
 
                 let mut new_values: Vec<CustomFieldValue> = Vec::with_capacity(custom_fields.len());
                 for (name, value) in &custom_fields {
-                    let cf_id: i64 = custom_field::table
-                        .select(custom_field::id)
+                    let (cf_id, cf_color): (i64, SmallString) = custom_field::table
+                        .select((custom_field::id, custom_field::color))
                         .filter(custom_field::name.eq(name))
                         .first(conn)
                         .optional()?
@@ -1103,6 +1103,7 @@ async fn update_impl(
                     new_values.push(CustomFieldValue {
                         name: name.clone(),
                         value: *value,
+                        color: cf_color,
                     });
                 }
                 new_snapshot_data.custom_fields = new_values;

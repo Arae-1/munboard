@@ -22,6 +22,7 @@ class Post extends events.EventTarget {
             obj._comments = new CommentList();
             obj._pools = new PoolList();
             obj._customFields = {};
+            obj._customFieldColors = {};
         }
 
         this._updateFromResponse({});
@@ -277,6 +278,14 @@ class Post extends events.EventTarget {
 
     set customFields(value) {
         this._customFields = value;
+    }
+
+    get customFieldColors() {
+        return this._customFieldColors;
+    }
+
+    set customFieldColors(value) {
+        this._customFieldColors = value;
     }
 
     save(anonymous) {
@@ -556,9 +565,11 @@ class Post extends events.EventTarget {
             obj._comments.sync(response.comments);
             obj._pools.sync(response.pools);
             obj._customFields = {};
+            obj._customFieldColors = {};
             if (response.customFields) {
                 for (let cf of response.customFields) {
                     obj._customFields[cf.name] = cf.value;
+                    obj._customFieldColors[cf.name] = cf.color;
                 }
             }
         }
