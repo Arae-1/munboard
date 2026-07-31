@@ -110,10 +110,6 @@ class CustomFieldListController {
             filtered.sort((a, b) => (b.description || "").localeCompare(a.description || ""));
         } else if (q.includes("sort:description")) {
             filtered.sort((a, b) => (a.description || "").localeCompare(b.description || ""));
-        } else if (q.includes("-sort:color")) {
-            filtered.sort((a, b) => (b.color || "").localeCompare(a.color || ""));
-        } else if (q.includes("sort:color")) {
-            filtered.sort((a, b) => (a.color || "").localeCompare(b.color || ""));
         } else {
             filtered.sort((a, b) => a.name.localeCompare(b.name));
         }

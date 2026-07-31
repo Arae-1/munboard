@@ -16,13 +16,6 @@
                         <a href='<%- ctx.formatClientLink('custom-fields', {query: 'sort:description'}) %>'>Description</a>
                     <% } %>
                 </th>
-                <th class='color'>
-                    <% if (ctx.parameters.query == 'sort:color') { %>
-                        <a href='<%- ctx.formatClientLink('custom-fields', {query: '-sort:color'}) %>'>Color</a>
-                    <% } else { %>
-                        <a href='<%- ctx.formatClientLink('custom-fields', {query: 'sort:color'}) %>'>Color</a>
-                    <% } %>
-                </th>
                 <th class='creation-time'>
                     <% if (ctx.parameters.query == 'sort:creation-time') { %>
                         <a href='<%- ctx.formatClientLink('custom-fields', {query: '-sort:creation-time'}) %>'>Created on</a>
@@ -41,14 +34,6 @@
                         </td>
                         <td class='description'>
                             <%- cf.description || '-' %>
-                        </td>
-                        <td class='color'>
-                            <% if (cf.color) { %>
-                                <span class='color-swatch' style='background:<%- cf.color %>'></span>
-                                <%- cf.color %>
-                            <% } else { %>
-                                -
-                            <% } %>
                         </td>
                         <td class='creation-time'>
                             <%= ctx.makeRelativeTime(cf.creationTime) %>
