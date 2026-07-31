@@ -29,11 +29,14 @@ ul.compact-custom-fields
         overflow: hidden
         text-overflow: ellipsis
         transition: background-color 0.5s linear
+        cursor: pointer
         a
             display: inline
         a:focus
             outline: 0
             box-shadow: inset 0 0 0 2px $main-color
+        &.editing
+            background: $top-navigation-color
     i
         padding-right: 0.4em
 
@@ -48,6 +51,10 @@ div.custom-field-input, ul.compact-custom-fields
         margin-right: 0.5em
 
 .darktheme
+    ul.compact-custom-fields
+        li
+            &.editing
+                background: $top-navigation-color-darktheme
     div.custom-field-input, ul.compact-custom-fields
         .custom-field-usages, .remove-custom-field
             color: $inactive-link-color-darktheme

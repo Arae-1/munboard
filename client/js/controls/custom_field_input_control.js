@@ -14,6 +14,7 @@ class CustomFieldInputControl extends events.EventTarget {
         this._customFields = customFields;
         this._customFieldColors = customFieldColors || {};
         this._selectedColor = null;
+        this._editingName = null;
         this._hostNode = hostNode;
 
         // dom
@@ -23,6 +24,8 @@ class CustomFieldInputControl extends events.EventTarget {
         this._valueInputNode = editAreaNode.querySelector("input.cf-value");
         this._addButtonNode = editAreaNode.querySelector("button");
         this._listNode = editAreaNode.querySelector("ul.compact-custom-fields");
+
+        this._addButtonNode.textContent = "Add";
 
         this._autoCompleteControl = new CustomFieldAutoCompleteControl(
             this._nameInputNode,
@@ -64,11 +67,36 @@ class CustomFieldInputControl extends events.EventTarget {
                 this._addCurrent();
             }
         });
+        this._nameInputNode.addEventListener("input", (e) => {
+            if (!this._editingName) {
+                return;
+            }
+            if (this._nameInputNode.value.trim() !== this._editingName) {
+                this._exitEditMode();
+            }
+        });
     }
 
     _evtAddClick(e) {
         e.preventDefault();
         this._addCurrent();
+    }
+
+    _evtEditClick(name) {
+        this._editingName = name;
+        this._nameInputNode.value = name;
+        this._valueInputNode.value = this._customFields[name];
+        this._addButtonNode.textContent = "Update";
+        this._highlightRow(name);
+        this._valueInputNode.focus();
+    }
+
+    _exitEditMode() {
+        this._editingName = null;
+        this._nameInputNode.value = "";
+        this._valueInputNode.value = "";
+        this._addButtonNode.textContent = "Add";
+        this._clearHighlight();
     }
 
     _addCurrent() {
@@ -92,14 +120,16 @@ class CustomFieldInputControl extends events.EventTarget {
 
         this._customFields[name] = value;
 
-        this._nameInputNode.value = "";
-        this._valueInputNode.value = "";
+        this._exitEditMode();
         this._nameInputNode.focus();
 
         this.dispatchEvent(new CustomEvent("change"));
     }
 
     _removeField(name) {
+        if (this._editingName === name) {
+            this._exitEditMode();
+        }
         delete this._customFields[name];
         delete this._customFieldColors[name];
         this._deleteListItemNode(name);
@@ -113,12 +143,13 @@ class CustomFieldInputControl extends events.EventTarget {
         removalLinkNode.setAttribute("data-pseudo-content", "\u00d7");
         removalLinkNode.addEventListener("click", (e) => {
             e.preventDefault();
+            e.stopPropagation();
             this._removeField(name);
         });
 
         const nameNode = document.createElement("span");
         nameNode.classList.add("custom-field-name");
-        nameNode.textContent = name + ':';
+        nameNode.textContent = name + ":";
         nameNode.style.color = color || api.getCustomFieldDefaultColor();
 
         const valueNode = document.createElement("span");
@@ -130,6 +161,9 @@ class CustomFieldInputControl extends events.EventTarget {
         listItemNode.appendChild(removalLinkNode);
         listItemNode.appendChild(nameNode);
         listItemNode.appendChild(valueNode);
+        listItemNode.addEventListener("click", (e) => {
+            this._evtEditClick(name);
+        });
 
         return listItemNode;
     }
@@ -137,9 +171,9 @@ class CustomFieldInputControl extends events.EventTarget {
     _updateListItemNode(name, value) {
         const listItemNode = this._listNode.querySelector(`li[data-name="${CSS.escape(name)}"]`);
         if (listItemNode) {
-        const valueNode = listItemNode.querySelector(".custom-field-usages");
-        if (valueNode) {
-valueNode.setAttribute("data-pseudo-content", value);
+            const valueNode = listItemNode.querySelector(".custom-field-usages");
+            if (valueNode) {
+                valueNode.setAttribute("data-pseudo-content", value);
             }
         }
     }
@@ -148,6 +182,21 @@ valueNode.setAttribute("data-pseudo-content", value);
         const listItemNode = this._listNode.querySelector(`li[data-name="${CSS.escape(name)}"]`);
         if (listItemNode) {
             listItemNode.parentNode.removeChild(listItemNode);
+        }
+    }
+
+    _highlightRow(name) {
+        this._clearHighlight();
+        const row = this._listNode.querySelector(`li[data-name="${CSS.escape(name)}"]`);
+        if (row) {
+            row.classList.add("editing");
+        }
+    }
+
+    _clearHighlight() {
+        const active = this._listNode.querySelector("li.editing");
+        if (active) {
+            active.classList.remove("editing");
         }
     }
 }
