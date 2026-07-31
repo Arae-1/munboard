@@ -3,9 +3,9 @@
 const router = require("../router.js");
 const api = require("../api.js");
 const uri = require("../util/uri.js");
-const misc = require("../util/misc.js");
 const CustomFieldList = require("../models/custom_field_list.js");
 const topNavigation = require("../models/top_navigation.js");
+const PageController = require("../controllers/page_controller.js");
 const CustomFieldsHeaderView = require("../views/custom_fields_header_view.js");
 const CustomFieldsPageView = require("../views/custom_fields_page_view.js");
 const EmptyView = require("../views/empty_view.js");
@@ -20,6 +20,8 @@ const fields = [
 
 class CustomFieldListController {
     constructor(ctx) {
+        this._pageController = new PageController();
+
         if (!api.hasPrivilege("custom_field_list")) {
             this._view = new EmptyView();
             this._view.showError("You don't have privileges to view custom fields.");
@@ -27,23 +29,13 @@ class CustomFieldListController {
         }
 
         this._ctx = ctx;
-        this._allCustomFields = [];
+        this._allCustomFields = null;
 
         topNavigation.activate("custom-fields");
         topNavigation.setTitle("Listing custom fields");
 
-        const hostNode = document.getElementById("content-holder");
-        hostNode.innerHTML = "";
-
-        this._pageHeaderHolderNode = document.createElement("div");
-        this._pageHeaderHolderNode.classList.add("page-header-holder");
-        this._pageContentHolderNode = document.createElement("div");
-        this._pageContentHolderNode.classList.add("page-content-holder");
-        hostNode.appendChild(this._pageHeaderHolderNode);
-        hostNode.appendChild(this._pageContentHolderNode);
-
         this._headerView = new CustomFieldsHeaderView({
-            hostNode: this._pageHeaderHolderNode,
+            hostNode: this._pageController.view.pageHeaderHolderNode,
             parameters: ctx.parameters,
             canCreate: api.hasPrivilege("custom_field_create"),
         });
@@ -51,17 +43,15 @@ class CustomFieldListController {
             this._evtNavigate(e)
         );
 
-        this._loadPage();
+        this._syncPageController();
     }
 
     showSuccess(message) {
-        const views = require("../util/views.js");
-        views.showSuccess(this._pageContentHolderNode, message);
+        this._pageController.showSuccess(message);
     }
 
     showError(message) {
-        const views = require("../util/views.js");
-        views.showError(this._pageContentHolderNode, message);
+        this._pageController.showError(message);
     }
 
     _evtNavigate(e) {
@@ -69,28 +59,15 @@ class CustomFieldListController {
             uri.formatClientLink("custom-fields", e.detail.parameters)
         );
         Object.assign(this._ctx.parameters, e.detail.parameters);
-        this._renderFiltered();
+        this._syncPageController();
     }
 
-    _loadPage() {
-        CustomFieldList.get(fields).then(
-            (response) => {
-                this._allCustomFields = response.results;
-                this._renderFiltered();
-            },
-            (error) => {
-                this._view = new EmptyView();
-                this._view.showError(error.message);
-            }
-        );
-    }
+    _filterSort(results, query) {
+        let filtered = [...results];
+        const q = (query || "").trim();
 
-    _renderFiltered() {
-        const query = (this._ctx.parameters.query || "").toLowerCase().trim();
-        let results = [...this._allCustomFields];
-
-        if (query) {
-            const tokens = query.split(/\s+/);
+        if (q) {
+            const tokens = q.split(/\s+/).filter((t) => !t.startsWith("sort:") && !t.startsWith("-sort:"));
             for (let token of tokens) {
                 let negate = false;
                 let term = token;
@@ -101,18 +78,18 @@ class CustomFieldListController {
 
                 if (term.startsWith("name:")) {
                     const val = term.slice(5);
-                    results = results.filter((cf) => {
+                    filtered = filtered.filter((cf) => {
                         const match = cf.name.toLowerCase().includes(val);
                         return negate ? !match : match;
                     });
                 } else if (term.startsWith("color:")) {
                     const val = term.slice(6);
-                    results = results.filter((cf) => {
+                    filtered = filtered.filter((cf) => {
                         const match = cf.color && cf.color.toLowerCase().includes(val);
                         return negate ? !match : match;
                     });
                 } else {
-                    results = results.filter((cf) => {
+                    filtered = filtered.filter((cf) => {
                         const match =
                             cf.name.toLowerCase().includes(term) ||
                             (cf.description && cf.description.toLowerCase().includes(term)) ||
@@ -123,30 +100,62 @@ class CustomFieldListController {
             }
         }
 
-        // Handle sort
-        const sortQuery = this._ctx.parameters.query || "";
-        if (sortQuery.includes("-sort:name")) {
-            results.sort((a, b) => b.name.localeCompare(a.name));
-        } else if (sortQuery.includes("-sort:creation-time")) {
-            results.sort((a, b) => b.creationTime.localeCompare(a.creationTime));
-        } else if (sortQuery.includes("sort:creation-time")) {
-            results.sort((a, b) => a.creationTime.localeCompare(b.creationTime));
-        } else if (sortQuery.includes("-sort:description")) {
-            results.sort((a, b) => (b.description || "").localeCompare(a.description || ""));
-        } else if (sortQuery.includes("sort:description")) {
-            results.sort((a, b) => (a.description || "").localeCompare(b.description || ""));
-        } else if (sortQuery.includes("-sort:color")) {
-            results.sort((a, b) => (b.color || "").localeCompare(a.color || ""));
-        } else if (sortQuery.includes("sort:color")) {
-            results.sort((a, b) => (a.color || "").localeCompare(b.color || ""));
+        if (q.includes("-sort:name")) {
+            filtered.sort((a, b) => b.name.localeCompare(a.name));
+        } else if (q.includes("-sort:creation-time")) {
+            filtered.sort((a, b) => b.creationTime.localeCompare(a.creationTime));
+        } else if (q.includes("sort:creation-time")) {
+            filtered.sort((a, b) => a.creationTime.localeCompare(b.creationTime));
+        } else if (q.includes("-sort:description")) {
+            filtered.sort((a, b) => (b.description || "").localeCompare(a.description || ""));
+        } else if (q.includes("sort:description")) {
+            filtered.sort((a, b) => (a.description || "").localeCompare(b.description || ""));
+        } else if (q.includes("-sort:color")) {
+            filtered.sort((a, b) => (b.color || "").localeCompare(a.color || ""));
+        } else if (q.includes("sort:color")) {
+            filtered.sort((a, b) => (a.color || "").localeCompare(b.color || ""));
         } else {
-            results.sort((a, b) => a.name.localeCompare(b.name));
+            filtered.sort((a, b) => a.name.localeCompare(b.name));
         }
 
-        this._view = new CustomFieldsPageView({
-            hostNode: this._pageContentHolderNode,
-            customFields: results,
+        return filtered;
+    }
+
+    _syncPageController() {
+        this._pageController.run({
             parameters: this._ctx.parameters,
+            defaultLimit: 50,
+            getClientUrlForPage: (offset, limit) => {
+                const parameters = Object.assign({}, this._ctx.parameters, {
+                    offset: offset,
+                    limit: limit,
+                });
+                return uri.formatClientLink("custom-fields", parameters);
+            },
+            requestPage: (offset, limit) => {
+                const fetchPromise = this._allCustomFields
+                    ? Promise.resolve(this._allCustomFields)
+                    : CustomFieldList.get(fields).then((response) => {
+                          this._allCustomFields = response.results;
+                          return this._allCustomFields;
+                      });
+
+                return fetchPromise.then((results) => {
+                    const filtered = this._filterSort(
+                        results,
+                        this._ctx.parameters.query
+                    );
+                    return Promise.resolve({
+                        results: filtered,
+                        total: filtered.length,
+                        offset: 0,
+                        limit: filtered.length,
+                    });
+                });
+            },
+            pageRenderer: (pageCtx) => {
+                return new CustomFieldsPageView(pageCtx);
+            },
         });
     }
 }

@@ -1,6 +1,5 @@
 <div class='custom-field-list table-wrap'>
-    <div class='messages'></div>
-    <% if (ctx.customFields.length) { %>
+    <% if (ctx.response.results.length) { %>
         <table>
             <thead>
                 <th class='name'>
@@ -33,7 +32,7 @@
                 </th>
             </thead>
             <tbody>
-                <% for (let cf of ctx.customFields) { %>
+                <% for (let cf of ctx.response.results) { %>
                     <tr>
                         <td class='name'>
                             <ul>
@@ -41,11 +40,11 @@
                             </ul>
                         </td>
                         <td class='description'>
-                            <%- cf.description ? cf.description.slice(0, 100) : '-' %>
+                            <%- cf.description || '-' %>
                         </td>
                         <td class='color'>
                             <% if (cf.color) { %>
-                                <span style='display:inline-block;width:12px;height:12px;background:<%- cf.color %>;vertical-align:middle;border:1px solid var(--border-color)'></span>
+                                <span class='color-swatch' style='background:<%- cf.color %>'></span>
                                 <%- cf.color %>
                             <% } else { %>
                                 -
@@ -58,7 +57,5 @@
                 <% } %>
             </tbody>
         </table>
-    <% } else { %>
-        <p>No custom fields found.</p>
     <% } %>
 </div>

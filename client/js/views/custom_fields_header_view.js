@@ -49,6 +49,7 @@ class CustomFieldsHeaderView extends events.EventTarget {
                 detail: {
                     parameters: {
                         query: this._queryInputNode.value,
+                        page: 1,
                     },
                 },
             })
