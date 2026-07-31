@@ -20,6 +20,13 @@ pub enum Field {
     CreationTime,
     LastEditTime,
     LastUsageTime,
+    Token,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Visibility {
+    Full,
+    PublicOnly,
 }
 
 impl From<Field> for u64 {
@@ -51,10 +58,12 @@ pub struct UserTokenInfo {
     last_edit_time: Option<DateTime>,
     /// The last time this token was used during a login involving `?bump-login`.
     last_usage_time: Option<DateTime>,
+    /// The token value (UUID) used for authentication. Only visible on creation.
+    token: Option<Option<String>>,
 }
 
 impl UserTokenInfo {
-    pub fn new(user: MicroUser, user_token: UserToken, fields: Mask<Field>) -> Self {
+    pub fn new(user: MicroUser, user_token: UserToken, fields: Mask<Field>, visibility: Visibility) -> Self {
         UserTokenInfo {
             version: fields[Field::Version].then_some(user_token.last_edit_time),
             user: fields[Field::User].then_some(user),
@@ -64,6 +73,10 @@ impl UserTokenInfo {
             creation_time: fields[Field::CreationTime].then_some(user_token.creation_time),
             last_edit_time: fields[Field::LastEditTime].then_some(user_token.last_edit_time),
             last_usage_time: fields[Field::LastUsageTime].then_some(user_token.last_usage_time),
+            token: match (fields[Field::Token], visibility == Visibility::Full) {
+                (true, true) => Some(Some(user_token.id.to_string())),
+                _ => None,
+            },
         }
     }
 }

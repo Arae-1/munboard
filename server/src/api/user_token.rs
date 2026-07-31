@@ -8,7 +8,7 @@ use crate::model::enums::{AvatarStyle, ResourceOperation, ResourceType};
 use crate::model::snapshot::NewSnapshot;
 use crate::model::user::{NewUserToken, UserToken};
 use crate::resource::user::MicroUser;
-use crate::resource::user_token::{Field, UserTokenInfo};
+use crate::resource::user_token::{Field, UserTokenInfo, Visibility};
 use crate::schema::{user, user_token};
 use crate::snapshot;
 use crate::string::{LargeString, SmallString};
@@ -81,7 +81,12 @@ async fn list(
     let results = user_tokens
         .into_iter()
         .map(|user_token| {
-            UserTokenInfo::new(MicroUser::new(&ctx.config, username.clone(), avatar_style), user_token, params.fields)
+            UserTokenInfo::new(
+                MicroUser::new(&ctx.config, username.clone(), avatar_style),
+                user_token,
+                params.fields,
+                Visibility::PublicOnly,
+            )
         })
         .collect();
     Ok(Json(UnpagedResponse { results }))
@@ -170,6 +175,7 @@ async fn create(
         MicroUser::new(&ctx.config, username, avatar_style),
         user_token,
         params.fields,
+        Visibility::Full,
     )))
 }
 
@@ -284,6 +290,7 @@ async fn update(
         MicroUser::new(&ctx.config, username, avatar_style),
         updated_user_token,
         params.fields,
+        Visibility::PublicOnly,
     )))
 }
 
