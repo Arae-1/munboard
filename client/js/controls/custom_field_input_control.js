@@ -46,7 +46,7 @@ class CustomFieldInputControl extends events.EventTarget {
         );
 
         // add existing custom fields
-        for (let name of Object.keys(this._customFields)) {
+        for (let name of Object.keys(this._customFields).sort()) {
             const listItemNode = this._createListItemNode(name, this._customFields[name], this._customFieldColors[name]);
             this._listNode.appendChild(listItemNode);
         }
@@ -118,12 +118,12 @@ class CustomFieldInputControl extends events.EventTarget {
 
         const nameNode = document.createElement("span");
         nameNode.classList.add("custom-field-name");
-        nameNode.textContent = name;
+        nameNode.textContent = name + ':';
         nameNode.style.color = color || api.getCustomFieldDefaultColor();
 
         const valueNode = document.createElement("span");
         valueNode.classList.add("custom-field-usages");
-        valueNode.setAttribute("data-pseudo-content", '= ' + value);
+        valueNode.setAttribute("data-pseudo-content", value);
 
         const listItemNode = document.createElement("li");
         listItemNode.setAttribute("data-name", name);
@@ -139,7 +139,7 @@ class CustomFieldInputControl extends events.EventTarget {
         if (listItemNode) {
         const valueNode = listItemNode.querySelector(".custom-field-usages");
         if (valueNode) {
-valueNode.setAttribute("data-pseudo-content", '= ' + value);
+valueNode.setAttribute("data-pseudo-content", value);
             }
         }
     }
