@@ -143,10 +143,12 @@
                         --><% } %><!--
                         --><% if (ctx.canViewCustomFields) { %><!--
                             --><a href='<%- ctx.formatClientLink('custom-fields') %>'<% if (color) { %> style='color:<%- color %>'<% } %>><!--
-                        --><% } %><!--
                             --><%- name %><!--
-                        --><% if (ctx.canViewCustomFields) { %><!--
                             --></a><!--
+                        --><% } else if (color) { %><!--
+                            --><span style='color:<%- color %>'><%- name %></span><!--
+                        --><% } else { %><!--
+                            --><%- name %><!--
                         --><% } %>&#32;<!--
                         --><span class='custom-field-usages' data-pseudo-content='<%- ctx.post.customFields[name] %>'></span><!--
                     --></li><!--
