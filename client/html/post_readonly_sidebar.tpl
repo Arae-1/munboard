@@ -137,11 +137,11 @@
                 --><% for (let name of Object.keys(ctx.post.customFields).sort()) { let color = ctx.post.customFieldColors[name] || ctx.customFieldDefaultColor; %><!--
                     --><li><!--
                         --><% if (ctx.canViewCustomFields) { %><!--
-                            --><a href='<%- ctx.formatClientLink('custom-fields') %>'><!--
+                            --><a href='<%- ctx.formatClientLink('custom-fields') %>' style='color:<%- color %>'><!--
                                 --><i class='fa fa-wrench'></i><!--
                             --></a><!--
                         --><% } else { %><!--
-                            --><i class='fa fa-wrench'></i><!--
+                            --><i class='fa fa-wrench' style='color:<%- color %>'></i><!--
                         --><% } %><!--
                         --><% if (ctx.canViewCustomFields) { %><!--
                             --><a href='<%- ctx.formatClientLink('custom-fields') %>' style='color:<%- color %>'><!--
