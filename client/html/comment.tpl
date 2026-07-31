@@ -63,7 +63,7 @@
             <div class='keep-height'>
                 <div class='tab preview'>
                     <div class='comment-content'>
-                        <%= ctx.makeMarkdown(ctx.comment ? ctx.comment.text : '') %>
+                        <%- ctx.makeMarkdown(ctx.comment ? ctx.comment.text : '') %>
                     </div>
                 </div>
 

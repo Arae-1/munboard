@@ -62,7 +62,7 @@
             <div class='description-container'>
                 <details open>
                     <summary>Description</summary>
-                    <%= ctx.makeMarkdown(ctx.post.description) %>
+                    <%- ctx.makeMarkdown(ctx.post.description) %>
                 </details>
             </div>
         <% } %>
