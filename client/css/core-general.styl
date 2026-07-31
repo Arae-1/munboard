@@ -120,6 +120,22 @@ form .fa-question-circle-o
     >.content-wrapper:not(.transparent-container)
         background: $top-navigation-color-darktheme
 
+blockquote
+    border-left: 3px solid $line-color
+    margin: 1em 0 1em 0
+    padding: 0.3em 0.3em 0.3em 0.7em
+    background: darken($window-color, 3%)
+    color: lighten($text-color, 20%)
+    :first-child
+        margin-top: 0
+    :last-child
+        margin-bottom: 0
+
+.darktheme blockquote
+    border-left-color: lighten($window-color-darktheme, 10%)
+    background: lighten($window-color-darktheme, 3%)
+    color: darken($text-color-darktheme, 10%)
+
 hr
     border: 0
     border-top: 1px solid $line-color
