@@ -185,14 +185,17 @@ function arraysDiffer(source1, source2, orderImportant) {
     );
 }
 
-function objectsDiffer(obj1, obj2) {
-    const keys1 = Object.keys(obj1).sort();
-    const keys2 = Object.keys(obj2).sort();
+function objectsDiffer(source1, source2) {
+    const keys1 = Object.keys(source1).sort();
+    const keys2 = Object.keys(source2).sort();
     if (keys1.length !== keys2.length) {
         return true;
     }
     for (let i = 0; i < keys1.length; i++) {
-        if (keys1[i] !== keys2[i] || obj1[keys1[i]] !== obj2[keys1[i]]) {
+        if (
+            keys1[i] !== keys2[i] ||
+            source1[keys1[i]] !== source2[keys1[i]]
+        ) {
             return true;
         }
     }

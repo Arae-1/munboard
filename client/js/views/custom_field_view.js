@@ -2,7 +2,6 @@
 
 const events = require("../events.js");
 const views = require("../util/views.js");
-const misc = require("../util/misc.js");
 const CustomFieldSummaryView = require("./custom_field_summary_view.js");
 const CustomFieldEditView = require("./custom_field_edit_view.js");
 const CustomFieldDeleteView = require("./custom_field_delete_view.js");

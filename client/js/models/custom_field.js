@@ -3,7 +3,6 @@
 const api = require("../api.js");
 const uri = require("../util/uri.js");
 const events = require("../events.js");
-const misc = require("../util/misc.js");
 
 class CustomField extends events.EventTarget {
     constructor() {

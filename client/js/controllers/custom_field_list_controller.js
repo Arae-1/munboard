@@ -67,7 +67,13 @@ class CustomFieldListController {
         const q = (query || "").trim();
 
         if (q) {
-            const tokens = q.split(/\s+/).filter((t) => !t.startsWith("sort:") && !t.startsWith("-sort:"));
+            const tokens = q
+                .split(/\s+/)
+                .filter(
+                    (t) =>
+                        !t.startsWith("sort:") &&
+                        !t.startsWith("-sort:")
+                );
             for (let token of tokens) {
                 let negate = false;
                 let term = token;
@@ -85,15 +91,23 @@ class CustomFieldListController {
                 } else if (term.startsWith("color:")) {
                     const val = term.slice(6);
                     filtered = filtered.filter((cf) => {
-                        const match = cf.color && cf.color.toLowerCase().includes(val);
+                        const match =
+                            cf.color &&
+                            cf.color.toLowerCase().includes(val);
                         return negate ? !match : match;
                     });
                 } else {
                     filtered = filtered.filter((cf) => {
                         const match =
                             cf.name.toLowerCase().includes(term) ||
-                            (cf.description && cf.description.toLowerCase().includes(term)) ||
-                            (cf.color && cf.color.toLowerCase().includes(term));
+                            (cf.description &&
+                                cf.description
+                                    .toLowerCase()
+                                    .includes(term)) ||
+                            (cf.color &&
+                                cf.color
+                                    .toLowerCase()
+                                    .includes(term));
                         return negate ? !match : match;
                     });
                 }
@@ -107,9 +121,17 @@ class CustomFieldListController {
         } else if (q.includes("sort:creation-time")) {
             filtered.sort((a, b) => a.creationTime.localeCompare(b.creationTime));
         } else if (q.includes("-sort:description")) {
-            filtered.sort((a, b) => (b.description || "").localeCompare(a.description || ""));
+            filtered.sort((a, b) =>
+                (b.description || "").localeCompare(
+                    a.description || ""
+                )
+            );
         } else if (q.includes("sort:description")) {
-            filtered.sort((a, b) => (a.description || "").localeCompare(b.description || ""));
+            filtered.sort((a, b) =>
+                (a.description || "").localeCompare(
+                    b.description || ""
+                )
+            );
         } else {
             filtered.sort((a, b) => a.name.localeCompare(b.name));
         }

@@ -6,8 +6,6 @@ const AutoCompleteControl = require("./auto_complete_control.js");
 
 class CustomFieldAutoCompleteControl extends AutoCompleteControl {
     constructor(input, options) {
-        const minLengthForPartialSearch = 2;
-
         options.getMatches = (text) => {
             const term = misc.escapeSearchTerm(text);
 
@@ -24,10 +22,9 @@ class CustomFieldAutoCompleteControl extends AutoCompleteControl {
                                     "(" + misc.escapeSearchTerm(text) + ")",
                                     "gi"
                                 );
-                                const caption = cf.name.replace(
-                                    regex,
-                                    "<b>$1</b>"
-                                );
+                                const caption = misc
+                                    .escapeHtml(cf.name)
+                                    .replace(regex, "<b>$1</b>");
                                 return {
                                     caption: caption,
                                     value: cf,
@@ -41,13 +38,6 @@ class CustomFieldAutoCompleteControl extends AutoCompleteControl {
         };
 
         super(input, options);
-    }
-
-    _getActiveSuggestion() {
-        if (this._activeResult === -1) {
-            return null;
-        }
-        return this._results[this._activeResult].value;
     }
 }
 

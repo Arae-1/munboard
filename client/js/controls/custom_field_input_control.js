@@ -1,7 +1,6 @@
 "use strict";
 
 const api = require("../api.js");
-const misc = require("../util/misc.js");
 const events = require("../events.js");
 const views = require("../util/views.js");
 const CustomFieldAutoCompleteControl = require("./custom_field_auto_complete_control.js");
@@ -17,13 +16,13 @@ class CustomFieldInputControl extends events.EventTarget {
         this._editingName = null;
         this._hostNode = hostNode;
 
-        // dom
-        const editAreaNode = template();
-        this._editAreaNode = editAreaNode;
-        this._nameInputNode = editAreaNode.querySelector("input.cf-name");
-        this._valueInputNode = editAreaNode.querySelector("input.cf-value");
-        this._addButtonNode = editAreaNode.querySelector("button");
-        this._listNode = editAreaNode.querySelector("ul.compact-custom-fields");
+        this._editAreaNode = template();
+        this._nameInputNode = this._editAreaNode.querySelector("input.cf-name");
+        this._valueInputNode = this._editAreaNode.querySelector("input.cf-value");
+        this._addButtonNode = this._editAreaNode.querySelector("button");
+        this._listNode = this._editAreaNode.querySelector(
+            "ul.compact-custom-fields"
+        );
 
         this._addButtonNode.textContent = "Add";
 
@@ -41,7 +40,6 @@ class CustomFieldInputControl extends events.EventTarget {
             }
         );
 
-        // show
         this._hostNode.style.display = "none";
         this._hostNode.parentNode.insertBefore(
             this._editAreaNode,
@@ -50,7 +48,11 @@ class CustomFieldInputControl extends events.EventTarget {
 
         // add existing custom fields
         for (let name of Object.keys(this._customFields).sort()) {
-            const listItemNode = this._createListItemNode(name, this._customFields[name], this._customFieldColors[name]);
+            const listItemNode = this._createListItemNode(
+                name,
+                this._customFields[name],
+                this._customFieldColors[name]
+            );
             this._listNode.appendChild(listItemNode);
         }
 

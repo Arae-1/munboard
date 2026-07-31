@@ -2,7 +2,6 @@
 
 const events = require("../events.js");
 const views = require("../util/views.js");
-const CustomField = require("../models/custom_field.js");
 
 const template = views.getTemplate("custom-field-create");
 

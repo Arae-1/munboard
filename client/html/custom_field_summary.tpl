@@ -17,7 +17,6 @@
     </section>
 
     <section>
-        <b>Created:</b>
-        <span><% var d=new Date(ctx.customField.creationTime); %><%- d.toLocaleString() %></span>
+        <b>Created:</b> <%= ctx.makeRelativeTime(ctx.customField.creationTime) %>
     </section>
 </div>
