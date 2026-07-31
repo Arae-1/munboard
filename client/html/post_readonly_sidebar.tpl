@@ -131,11 +131,14 @@
     <% } %>
 
     <% if (ctx.post.customFields && Object.keys(ctx.post.customFields).length) { %>
+        <nav class='custom-fields'>
+            <h1>Custom Fields (<%- Object.keys(ctx.post.customFields).length %>)</h1>
         <% for (let name of Object.keys(ctx.post.customFields).sort()) { let color = ctx.post.customFieldColors[name] || ctx.customFieldDefaultColor; %>
             <section class='custom-field'>
                 <b style='color:<%- color %>'><%- ctx.getPrettyName(name) %>:</b> <%- ctx.post.customFields[name] %>
             </section>
         <% } %>
+        </nav>
     <% } %>
 
     <% if (ctx.post.launchDate) { %>
