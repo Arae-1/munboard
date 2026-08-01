@@ -53,7 +53,7 @@ async fn list(
     let list_any = ctx.config.privileges()[Action::UserTokenListAny];
     let list_self = ctx.config.privileges()[Action::UserTokenListSelf];
 
-    let (avatar_style, user_tokens) = connection_pool
+    let (avatar_style, user_tokens, is_self) = connection_pool
         .transaction({
             let username = username.clone();
             move |conn| {
@@ -72,11 +72,15 @@ async fn list(
                     .filter(user_token::user_id.eq(user_id))
                     .order(user_token::creation_time.desc())
                     .load(conn)
-                    .map(|tokens| (avatar_style, tokens))
+                    .map(|tokens| (avatar_style, tokens, is_self))
                     .map_err(ApiError::from)
             }
         })
         .await?;
+
+    // Only the owner may see their raw token UUIDs; other viewers (e.g. admins
+    // inspecting another user) get the public-only resource without the secret.
+    let visibility = if is_self { Visibility::Full } else { Visibility::PublicOnly };
 
     let results = user_tokens
         .into_iter()
@@ -85,7 +89,7 @@ async fn list(
                 MicroUser::new(&ctx.config, username.clone(), avatar_style),
                 user_token,
                 params.fields,
-                Visibility::PublicOnly,
+                visibility,
             )
         })
         .collect();
@@ -374,6 +378,37 @@ mod test {
     async fn list() -> ApiResult<()> {
         const USER: &str = "administrator";
         verify_response(&format!("GET /user-tokens/{USER}/?{FIELDS}"), "user_token/list").await
+    }
+
+    #[tokio::test]
+    #[parallel]
+    async fn list_visibility() -> ApiResult<()> {
+        let app_state = get_state();
+        let (router, _) = api::routes(app_state).split_for_parts();
+        let app = NormalizePathLayer::trim_trailing_slash().layer(router);
+        let server = TestServer::new(ServiceExt::<Request>::into_make_service(app))
+            .expect("Test server must be constructible");
+        let auth = header::basic_credentials_for("administrator", TEST_PASSWORD);
+
+        // The owner sees their own raw token UUIDs.
+        let response = server
+            .get("/user-tokens/administrator")
+            .add_header(AUTHORIZATION, &auth)
+            .await;
+        assert_eq!(response.status_code(), 200);
+        let body: serde_json::Value = serde_json::from_slice(response.as_bytes())?;
+        assert_eq!(body["results"][0]["token"], json!(TEST_TOKEN.to_string()));
+
+        // Non-owners do not see the raw token UUIDs.
+        let response = server
+            .get("/user-tokens/regular_user")
+            .add_header(AUTHORIZATION, &auth)
+            .await;
+        assert_eq!(response.status_code(), 200);
+        let body: serde_json::Value = serde_json::from_slice(response.as_bytes())?;
+        assert!(body["results"][0].get("token").is_none());
+
+        Ok(())
     }
 
     #[tokio::test]
