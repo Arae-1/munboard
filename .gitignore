@@ -19,6 +19,7 @@ target/
 # Shit
 *.md
 !/docs/**/**
+!/CodeDoc/**
 !README.md
 !LICENSE.md
 *.kate-swp
