@@ -20,8 +20,6 @@ use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use tracing::warn;
 
-pub const MAX_URL_DOWNLOAD_SIZE: usize = 4 * 1024_usize.pow(3);
-
 /// Represents important data directories.
 #[derive(Clone, Copy, Display, IntoStaticStr)]
 #[strum(serialize_all = "kebab-case")]
@@ -66,7 +64,7 @@ where
         if let Some(max) = max_size
             && total_bytes > max
         {
-            return Err(ApiError::DownloadTooLarge(max));
+            return Err(ApiError::FileTooLarge(max));
         }
         file.write_all(&chunk).await?;
     }

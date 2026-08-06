@@ -44,7 +44,7 @@ Saves a streamed file to the temporary uploads directory.
 1. Creates an `UploadToken` with the MIME type.
 2. Creates parent directories for the upload path.
 3. Streams chunks to the file, tracking total bytes.
-4. If `max_size` is set and exceeded, returns `ApiError::DownloadTooLarge(max)`.
+4. If `max_size` is set and exceeded, returns `ApiError::FileTooLarge(max)`.
 5. Verifies magic bytes after saving.
 6. Returns the `UploadToken`.
 

@@ -2,7 +2,7 @@ use crate::api::doc::UPLOAD_TAG;
 use crate::api::error::{ApiError, ApiResult};
 use crate::app::AppState;
 use crate::config::{Action, Config};
-use crate::content::upload::{MAX_UPLOAD_SIZE, PartName, UploadToken};
+use crate::content::upload::{PartName, UploadToken};
 use crate::content::{download, upload};
 use crate::extract::{Ctx, Json, JsonOrMultipart};
 use axum::extract::DefaultBodyLimit;
@@ -12,10 +12,10 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-pub fn routes() -> OpenApiRouter<AppState> {
+pub fn routes(config: &Config) -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(upload))
-        .route_layer(DefaultBodyLimit::max(MAX_UPLOAD_SIZE))
+        .route_layer(DefaultBodyLimit::max(config.max_multipart_body_size()))
 }
 
 /// Request body for uploading a temporary file.

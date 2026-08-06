@@ -45,6 +45,11 @@ auto_explain = false
 # Only set to true if you are running behind a trusted reverse proxy (e.g. nginx, caddy).
 trusted_proxy = false
 
+# Maximum size in bytes of files uploaded directly via multipart
+max_upload_size = 4294967296
+# Maximum size in bytes of files downloaded from a URL
+max_url_download_size = 4294967296
+
 [thumbnails]
 avatar_width  = 300
 avatar_height = 300

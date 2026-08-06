@@ -282,6 +282,8 @@ pub struct Config {
     pub auto_explain: bool,
     #[serde(default)]
     pub trusted_proxy: bool,
+    pub max_upload_size: usize,
+    pub max_url_download_size: usize,
     pub thumbnails: ThumbnailConfig,
     pub smtp: Option<SmtpConfig>,
     pub anonymous_preferences: AnonymousPreferences,
@@ -328,6 +330,10 @@ impl Config {
     pub fn custom_avatar_path(&self, username: &str) -> PathBuf {
         let filename = format!("{}.png", username.to_lowercase());
         self.path(Directory::Avatars).join(filename)
+    }
+
+    pub fn max_multipart_body_size(&self) -> usize {
+        self.max_upload_size.saturating_mul(2).saturating_add(2 * 1024 * 1024)
     }
 }
 

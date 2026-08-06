@@ -1,7 +1,7 @@
 use crate::api::error::{ApiError, ApiResult};
 use crate::config::Config;
 use crate::content::upload::UploadToken;
-use crate::filesystem::{self, MAX_URL_DOWNLOAD_SIZE};
+use crate::filesystem;
 use crate::model::enums::MimeType;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue, REFERER};
 use reqwest::{Client, StatusCode};
@@ -75,5 +75,5 @@ pub async fn from_url(config: &Config, url: Url) -> ApiResult<UploadToken> {
         .transpose()?;
     let mime_type = MimeType::from_str(content_type.unwrap_or("")).map_err(Box::from)?;
 
-    filesystem::save_uploaded_file(config, response.bytes_stream(), mime_type, Some(MAX_URL_DOWNLOAD_SIZE)).await
+    filesystem::save_uploaded_file(config, response.bytes_stream(), mime_type, Some(config.max_url_download_size)).await
 }

@@ -2,11 +2,12 @@ use crate::api::doc::POST_TAG;
 use crate::api::error::{ApiError, ApiResult};
 use crate::api::{DeleteBody, MergeBody, PageParams, PagedResponse, RatingBody, ResourceParams, error};
 use crate::app::{AppState, Context};
-use crate::config::Action;
+use crate::config::{Action, Config};
+use axum::extract::DefaultBodyLimit;
 use crate::content::hash::PostHash;
 use crate::content::signature::SignatureCache;
 use crate::content::thumbnail::{ThumbnailCategory, ThumbnailType};
-use crate::content::upload::{MAX_UPLOAD_SIZE, PartName, UploadToken};
+use crate::content::upload::{PartName, UploadToken};
 use crate::content::{Content, signature, upload};
 use crate::db::AsyncConnectionPool;
 use crate::extract::{Ctx, Json, JsonOrMultipart, Path, Query};
@@ -22,7 +23,6 @@ use crate::string::{LargeString, SmallString};
 use crate::time::DateTime;
 use crate::update::tag::FetchMode;
 use crate::{api, db, filesystem, snapshot, update};
-use axum::extract::DefaultBodyLimit;
 use diesel::dsl::{exists, not, sql};
 use diesel::sql_types::Integer;
 use diesel::{
@@ -39,12 +39,12 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-pub fn routes() -> OpenApiRouter<AppState> {
+pub fn routes(config: &Config) -> OpenApiRouter<AppState> {
     let upload_capable_routes = OpenApiRouter::new()
         .routes(routes!(reverse_search))
         .routes(routes!(create))
         .routes(routes!(update))
-        .route_layer(DefaultBodyLimit::max(MAX_UPLOAD_SIZE));
+        .route_layer(DefaultBodyLimit::max(config.max_multipart_body_size()));
     OpenApiRouter::new()
         .routes(routes!(list))
         .routes(routes!(get, delete))

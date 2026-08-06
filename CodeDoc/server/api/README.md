@@ -83,7 +83,7 @@ Applied outermost-first in [mod.md](mod.md):
 | 404 | `NotFound` |
 | 409 | `AlreadyExists`, `ResourceModified` |
 | 415 | `UnsupportedExtension` |
-| 422 | `BlockedUrl`, `CyclicDependency`, `DeleteDefault`, `DownloadTooLarge`, `ExpressionFailsRegex`, `InvalidSort`, `InvalidTime`, `NoNamesGiven`, `SelfMerge`, image/ffmpeg errors |
+| 422 | `BlockedUrl`, `CyclicDependency`, `DeleteDefault`, `FileTooLarge`, `ExpressionFailsRegex`, `InvalidSort`, `InvalidTime`, `NoNamesGiven`, `SelfMerge`, image/ffmpeg errors |
 | 500 | `FailedQuery`, `StdIo`, internal errors |
 | 503 | `FailedConnection` |
 

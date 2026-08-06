@@ -12,10 +12,9 @@ This file provides the HTTP API handler for temporary file uploads. Uploaded fil
 | `crate::api::error::{ApiError, ApiResult}` | Error types |
 | `crate::app::AppState` | Application state |
 | `crate::config::{Action, Config}` | Privilege actions and configuration |
-| `crate::content::upload::{MAX_UPLOAD_SIZE, PartName, UploadToken}` | Upload constants and types |
+| `crate::content::upload::{PartName, UploadToken}` | Upload types |
 | `crate::content::{download, upload}` | Download and upload functions |
 | `crate::extract::{Ctx, Json, JsonOrMultipart}` | Axum extractors |
-| `axum::extract::DefaultBodyLimit` | Body size limiting middleware |
 | `serde::{Deserialize, Serialize}` | Serialization |
 | `url::Url` | URL type for content URL |
 | `utoipa::ToSchema` | OpenAPI schema |
@@ -23,9 +22,9 @@ This file provides the HTTP API handler for temporary file uploads. Uploaded fil
 
 ## Router
 
-### `routes() -> OpenApiRouter<AppState>`
+### `routes(config: &Config) -> OpenApiRouter<AppState>`
 
-Returns a router with the `upload` route and a `DefaultBodyLimit::max(MAX_UPLOAD_SIZE)` layer that limits the request body size.
+Returns a router with the `upload` route and a `DefaultBodyLimit::max(config.max_multipart_body_size())` layer that limits the total request body size. Individual file parts are limited to `config.max_upload_size`.
 
 ---
 
@@ -60,7 +59,7 @@ Returns a router with the `upload` route and a `DefaultBodyLimit::max(MAX_UPLOAD
 - **Path:** `/uploads`
 - **Authentication:** Required
 - **Privilege:** `Action::UploadCreate`
-- **Body size limit:** `MAX_UPLOAD_SIZE`
+- **Per-file size limit:** `config.max_upload_size`
 
 ### Handler: `upload`
 

@@ -45,12 +45,12 @@ pub fn routes(state: AppState) -> OpenApiRouter {
         .merge(password_reset::routes())
         .merge(pool::routes())
         .merge(pool_category::routes())
-        .merge(post::routes())
+        .merge(post::routes(&state.config))
         .merge(snapshot::routes())
         .merge(tag::routes())
         .merge(tag_category::routes())
-        .merge(upload::routes())
-        .merge(user::routes())
+        .merge(upload::routes(&state.config))
+        .merge(user::routes(&state.config))
         .merge(user_token::routes())
         .layer((
             TraceLayer::new_for_http(),

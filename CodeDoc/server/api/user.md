@@ -24,7 +24,7 @@ Returns a router with these endpoints:
 | `PUT` | `/user/{name}` | `update` |
 | `DELETE` | `/user/{name}` | `delete` |
 
-`create` and `update` use `DefaultBodyLimit::max(MAX_UPLOAD_SIZE)` for avatar uploads.
+`create` and `update` use a `DefaultBodyLimit::max(config.max_multipart_body_size())` layer for the total request body; the avatar file is limited to `config.max_upload_size` by the multipart streaming code.
 
 ---
 

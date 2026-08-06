@@ -7,12 +7,13 @@ use axum::extract::multipart::{Field, Multipart};
 use axum::extract::rejection::{JsonRejection, MissingJsonContentType};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::ffi::OsStr;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use strum::IntoStaticStr;
 use uuid::Uuid;
 
-pub const MAX_UPLOAD_SIZE: usize = 4 * 1024_usize.pow(3);
+const MAX_METADATA_SIZE: usize = 1024_usize.pow(2);
 
 /// A token that represents a file that's been streamed to disk during upload.
 #[derive(Clone, PartialEq, Eq, Serialize)]
@@ -72,7 +73,7 @@ pub async fn extract<const N: usize>(
 ) -> ApiResult<Body<N>> {
     let mut files = std::array::from_fn(|_| None);
     let mut metadata = None;
-    while let Some(field) = form_data.next_field().await? {
+    while let Some(mut field) = form_data.next_field().await? {
         let position = fields
             .iter()
             .map(Into::<&str>::into)
@@ -95,11 +96,22 @@ pub async fn extract<const N: usize>(
 
         match file_info {
             Some((index, mime_type)) => {
-                files[index] = filesystem::save_uploaded_file(config, field, mime_type, None)
+                files[index] = filesystem::save_uploaded_file(config, field, mime_type, Some(config.max_upload_size))
                     .await
                     .map(Some)?;
             }
-            None => metadata = field.bytes().await.map(|bytes| bytes.to_vec()).map(Some)?,
+            None => {
+                let mut total_bytes = 0usize;
+                let mut bytes = Vec::new();
+                while let Some(chunk) = field.chunk().await? {
+                    total_bytes += chunk.len();
+                    if total_bytes > MAX_METADATA_SIZE {
+                        return Err(ApiError::MetadataTooLarge(MAX_METADATA_SIZE));
+                    }
+                    bytes.extend_from_slice(&chunk);
+                }
+                metadata = Some(bytes);
+            }
         }
     }
     Ok(Body { files, metadata })
@@ -134,8 +146,10 @@ fn get_mime_type(field: &Field) -> ApiResult<MimeType> {
 
 /// Verifies that the magic bytes at the start of the file at `path` match the claimed `mime_type`.
 pub fn verify_magic_bytes(path: &Path, mime_type: MimeType) -> ApiResult<()> {
-    let bytes = std::fs::read(path)?;
-    let magic = &bytes[..std::cmp::min(12, bytes.len())];
+    let mut file = std::fs::File::open(path)?;
+    let mut bytes = [0u8; 12];
+    let bytes_read = file.read(&mut bytes)?;
+    let magic = &bytes[..bytes_read];
 
     let valid = match mime_type {
         MimeType::Png => magic.starts_with(&[0x89, 0x50, 0x4E, 0x47]),

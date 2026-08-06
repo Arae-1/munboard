@@ -220,7 +220,7 @@ pub enum ErrorName {
     WrongNumberOfPathParameters,
     ZeroNotAllowed,
     BlockedUrl,
-    DownloadTooLarge,
+    MetadataTooLarge,
 }
 
 pub trait ErrorKind {
@@ -679,7 +679,8 @@ impl ErrorKind for crate::api::error::ApiError {
             Self::UnauthorizedPasswordReset => ErrorName::UnauthorizedPasswordReset,
             Self::UnsupportedExtension(_) => ErrorName::UnsupportedExtension,
             Self::BlockedUrl => ErrorName::BlockedUrl,
-            Self::DownloadTooLarge(_) => ErrorName::DownloadTooLarge,
+            Self::FileTooLarge(_) => ErrorName::FileTooLarge,
+            Self::MetadataTooLarge(_) => ErrorName::MetadataTooLarge,
         }
     }
 }

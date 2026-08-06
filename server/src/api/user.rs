@@ -3,9 +3,10 @@ use crate::api::error::{ApiError, ApiResult};
 use crate::api::{DeleteBody, PageParams, PagedResponse, ResourceParams, error};
 use crate::app::AppState;
 use crate::auth::password;
-use crate::config::{Action, RegexType};
+use crate::config::{Action, Config, RegexType};
+use axum::extract::DefaultBodyLimit;
 use crate::content::thumbnail::ThumbnailType;
-use crate::content::upload::{MAX_UPLOAD_SIZE, PartName, UploadToken};
+use crate::content::upload::{PartName, UploadToken};
 use crate::content::{Content, upload};
 use crate::extract::{Ctx, Json, JsonOrMultipart, Path, Query};
 use crate::model::enums::{AvatarStyle, ResourceProperty, ResourceType, UserRank};
@@ -20,7 +21,6 @@ use crate::time::DateTime;
 use crate::{api, filesystem, update};
 use argon2::password_hash::SaltString;
 use argon2::password_hash::rand_core::OsRng;
-use axum::extract::DefaultBodyLimit;
 use diesel::dsl::exists;
 use diesel::{ExpressionMethods, Insertable, OptionalExtension, QueryDsl, RunQueryDsl};
 use serde::Deserialize;
@@ -29,11 +29,11 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-pub fn routes() -> OpenApiRouter<AppState> {
+pub fn routes(config: &Config) -> OpenApiRouter<AppState> {
     let upload_capable_routes = OpenApiRouter::new()
         .routes(routes!(create))
         .routes(routes!(update))
-        .route_layer(DefaultBodyLimit::max(MAX_UPLOAD_SIZE));
+        .route_layer(DefaultBodyLimit::max(config.max_multipart_body_size()));
     OpenApiRouter::new()
         .routes(routes!(list))
         .routes(routes!(get, delete))

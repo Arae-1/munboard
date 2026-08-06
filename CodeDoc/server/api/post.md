@@ -4,7 +4,7 @@ File: `server/src/api/post.rs`
 
 ## Overview
 
-This module defines all post-related HTTP endpoints. It handles CRUD operations, search, favorite, rating, featured posts, reverse image search, and post merging. File uploads use multipart/form-data with a default body limit of `MAX_UPLOAD_SIZE`.
+This module defines all post-related HTTP endpoints. It handles CRUD operations, search, favorite, rating, featured posts, reverse image search, and post merging. File uploads use multipart/form-data with file uploads limited to `config.max_upload_size` per file.
 
 ---
 
@@ -32,7 +32,7 @@ Returns a router with these endpoints:
 | `PUT` | `/post/{id}` | `update` |
 | `DELETE` | `/post/{id}` | `delete` |
 
-The `reverse_search`, `create`, and `update` routes use `DefaultBodyLimit::max(MAX_UPLOAD_SIZE)` for file uploads.
+The `reverse_search`, `create`, and `update` routes use a `DefaultBodyLimit::max(config.max_multipart_body_size())` layer for the total request body; individual files are limited to `config.max_upload_size` by the multipart streaming code.
 
 ---
 

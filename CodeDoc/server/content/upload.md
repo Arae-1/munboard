@@ -20,16 +20,6 @@ This module handles file uploads from HTTP multipart form data. It extracts file
 - `strum::IntoStaticStr`: Enum to static string conversion.
 - `uuid::Uuid`: UUID generation.
 
-## Constant: `MAX_UPLOAD_SIZE`
-
-```rust
-pub const MAX_UPLOAD_SIZE: usize = 4 * 1024_usize.pow(3);
-```
-
-Maximum upload size: 4 GB. Pow(3) means 1024^3 = 1 GB, times 4.
-
-**This constant appears unused in this file.** It is likely referenced elsewhere in the upload pipeline.
-
 ## Struct: `UploadToken`
 
 ```rust

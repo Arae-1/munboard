@@ -48,7 +48,8 @@ An exhaustive enum covering all possible API error conditions. Each variant has 
 | `ContentTypeMismatch(MimeType, SmallString)` | `"File of type {0} did not match request with content-type '{1}'"` | Direct |
 | `CyclicDependency(ResourceType)` | `"Cyclic dependency detected in {0}s"` | Direct |
 | `DeleteDefault(ResourceType)` | `"Cannot delete default {0}"` | Direct |
-| `DownloadTooLarge(usize)` | `"Download exceeds maximum size of {0} bytes"` | Direct |
+| `FileTooLarge(usize)` | `"File exceeds maximum size of {0} bytes"` | Direct |
+| `MetadataTooLarge(usize)` | `"Metadata exceeds maximum size of {0} bytes"` | Direct |
 | `EmptySwf` | `"SWF has no decodable images"` | Direct |
 | `EmptyVideo` | `"Video file has no frames"` | Direct |
 | `ExpressionFailsRegex(SmallString, RegexType)` | `"'{0}' does not match on {1} regex"` | Direct |
@@ -112,7 +113,7 @@ An exhaustive enum covering all possible API error conditions. Each variant has 
 | **404 NOT FOUND** | `NotFound` |
 | **409 CONFLICT** | `AlreadyExists`, `ResourceModified` |
 | **415 UNSUPPORTED MEDIA TYPE** | `UnsupportedExtension` |
-| **422 UNPROCESSABLE ENTITY** | `BlockedUrl`, `CyclicDependency`, `DeleteDefault`, `DownloadTooLarge`, `EmptySwf`, `EmptyVideo`, `ExpressionFailsRegex`, `FfmpegError`, `FrameBufferMismatch`, `FromStr`, `Image`, `InvalidEmail`, `InvalidEmailAddress`, `InvalidSort`, `InvalidTime`, `InvalidUploadToken`, `InvalidUserRank`, `NoNamesGiven`, `NotAnInteger`, `ResetAlreadyRequested`, `SelfMerge`, `SwfDecoding` |
+| **422 UNPROCESSABLE ENTITY** | `BlockedUrl`, `CyclicDependency`, `DeleteDefault`, `EmptySwf`, `EmptyVideo`, `ExpressionFailsRegex`, `FfmpegError`, `FileTooLarge`, `FrameBufferMismatch`, `FromStr`, `Image`, `InvalidEmail`, `InvalidEmailAddress`, `InvalidSort`, `InvalidTime`, `InvalidUploadToken`, `InvalidUserRank`, `MetadataTooLarge`, `NoNamesGiven`, `NotAnInteger`, `ResetAlreadyRequested`, `SelfMerge`, `SwfDecoding` |
 | **500 INTERNAL SERVER ERROR** | `FailedEmailTransport`, `FailedQuery`, `InvalidHeader`, `MissingSmtpInfo`, `StdIo`, `TaskJoin`, plus `JsonSerialization` with `Io`/`Eof` category, plus `FailedAuthentication::FailedQuery` |
 | **503 SERVICE UNAVAILABLE** | `FailedConnection`, `FailedAuthentication::FailedConnection` |
 

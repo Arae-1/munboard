@@ -29,8 +29,10 @@ pub enum ApiError {
     CyclicDependency(ResourceType),
     #[error("Cannot delete default {0}")]
     DeleteDefault(ResourceType),
-    #[error("Download exceeds maximum size of {0} bytes")]
-    DownloadTooLarge(usize),
+    #[error("File exceeds maximum size of {0} bytes")]
+    FileTooLarge(usize),
+    #[error("Metadata exceeds maximum size of {0} bytes")]
+    MetadataTooLarge(usize),
     #[error("SWF has no decodable images")]
     EmptySwf,
     #[error("Video file has no frames")]
@@ -130,7 +132,8 @@ impl ApiError {
             Self::BlockedUrl
             | Self::CyclicDependency(_)
             | Self::DeleteDefault(_)
-            | Self::DownloadTooLarge(_)
+            | Self::FileTooLarge(_)
+            | Self::MetadataTooLarge(_)
             | Self::EmptySwf
             | Self::EmptyVideo
             | Self::ExpressionFailsRegex(..)
@@ -175,7 +178,8 @@ impl ApiError {
             Self::ContentTypeMismatch(..) => "Content Type Mismatch",
             Self::CyclicDependency(_) => "Cyclic Dependency",
             Self::DeleteDefault(_) => "Delete Default",
-            Self::DownloadTooLarge(_) => "Download Too Large",
+            Self::FileTooLarge(_) => "File Too Large",
+            Self::MetadataTooLarge(_) => "Metadata Too Large",
             Self::EmptySwf => "Empty SWF",
             Self::EmptyVideo => "Empty Video",
             Self::ExpressionFailsRegex(..) => "Expression Fails Regex",
@@ -231,7 +235,10 @@ impl ApiError {
         ErrorResponse {
             name: self.kind(),
             title: self.category(),
-            description: self.to_string(),
+            description: match self {
+                Self::Multipart(err) => err.body_text(),
+                _ => self.to_string(),
+            },
         }
     }
 }
