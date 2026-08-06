@@ -15,6 +15,28 @@ use utoipa::ToSchema;
 
 pub type ApiResult<T> = Result<T, ApiError>;
 
+#[derive(Debug)]
+pub struct ByteSize(pub usize);
+
+impl std::fmt::Display for ByteSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        const UNITS: [&str; 6] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
+        let mut value = self.0 as f64;
+        let mut unit = 0;
+        while value >= 1024.0 && unit < UNITS.len() - 1 {
+            value /= 1024.0;
+            unit += 1;
+        }
+        if unit == 0 {
+            write!(f, "{} B", self.0)
+        } else if value.fract() == 0.0 {
+            write!(f, "{} {}", value as u64, UNITS[unit])
+        } else {
+            write!(f, "{value:.2} {}", UNITS[unit])
+        }
+    }
+}
+
 /// Giant error enum of doom
 #[derive(Debug, Error)]
 #[error(transparent)]
@@ -29,10 +51,10 @@ pub enum ApiError {
     CyclicDependency(ResourceType),
     #[error("Cannot delete default {0}")]
     DeleteDefault(ResourceType),
-    #[error("File exceeds maximum size of {0} bytes")]
-    FileTooLarge(usize),
-    #[error("Metadata exceeds maximum size of {0} bytes")]
-    MetadataTooLarge(usize),
+    #[error("File exceeds maximum size of {0}")]
+    FileTooLarge(ByteSize),
+    #[error("Metadata exceeds maximum size of {0}")]
+    MetadataTooLarge(ByteSize),
     #[error("SWF has no decodable images")]
     EmptySwf,
     #[error("Video file has no frames")]

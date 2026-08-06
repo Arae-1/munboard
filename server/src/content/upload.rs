@@ -1,4 +1,4 @@
-use crate::api::error::{ApiError, ApiResult};
+use crate::api::error::{ApiError, ApiResult, ByteSize};
 use crate::config::Config;
 use crate::filesystem::{self, Directory};
 use crate::model::enums::MimeType;
@@ -106,7 +106,7 @@ pub async fn extract<const N: usize>(
                 while let Some(chunk) = field.chunk().await? {
                     total_bytes += chunk.len();
                     if total_bytes > MAX_METADATA_SIZE {
-                        return Err(ApiError::MetadataTooLarge(MAX_METADATA_SIZE));
+                        return Err(ApiError::MetadataTooLarge(ByteSize(MAX_METADATA_SIZE)));
                     }
                     bytes.extend_from_slice(&chunk);
                 }

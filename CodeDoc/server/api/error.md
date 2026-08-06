@@ -48,8 +48,8 @@ An exhaustive enum covering all possible API error conditions. Each variant has 
 | `ContentTypeMismatch(MimeType, SmallString)` | `"File of type {0} did not match request with content-type '{1}'"` | Direct |
 | `CyclicDependency(ResourceType)` | `"Cyclic dependency detected in {0}s"` | Direct |
 | `DeleteDefault(ResourceType)` | `"Cannot delete default {0}"` | Direct |
-| `FileTooLarge(usize)` | `"File exceeds maximum size of {0} bytes"` | Direct |
-| `MetadataTooLarge(usize)` | `"Metadata exceeds maximum size of {0} bytes"` | Direct |
+| `FileTooLarge(ByteSize)` | `"File exceeds maximum size of {0}"` (`{0}` displays as a human-readable size) | Direct |
+| `MetadataTooLarge(ByteSize)` | `"Metadata exceeds maximum size of {0}"` (`{0}` displays as a human-readable size) | Direct |
 | `EmptySwf` | `"SWF has no decodable images"` | Direct |
 | `EmptyVideo` | `"Video file has no frames"` | Direct |
 | `ExpressionFailsRegex(SmallString, RegexType)` | `"'{0}' does not match on {1} regex"` | Direct |

@@ -1,4 +1,4 @@
-use crate::api::error::{ApiError, ApiResult};
+use crate::api::error::{ApiError, ApiResult, ByteSize};
 use crate::config::Config;
 use crate::content::hash::PostHash;
 use crate::content::thumbnail::ThumbnailCategory;
@@ -64,7 +64,7 @@ where
         if let Some(max) = max_size
             && total_bytes > max
         {
-            return Err(ApiError::FileTooLarge(max));
+            return Err(ApiError::FileTooLarge(ByteSize(max)));
         }
         file.write_all(&chunk).await?;
     }
