@@ -213,3 +213,20 @@ snapshot_list              = "power"
 
 upload_create              = "regular"
 upload_use_downloader      = "power"
+
+# Controls the appearance of OpenGraph embed pages served for /post/{id} links
+[embed]
+# Logo used as the site icon in embed footers (Discord/Telegram). Path or absolute URL.
+logo_url = ""
+# Image used for the card preview. post (full image for image posts, thumbnail otherwise), thumbnail, logo, or none
+image = "post"
+# Each slot is a text template with {placeholders} in any order.
+# Placeholders: {site_name} {post_id} {width} {height} {dimensions} {type}
+#   {file_size} {creation_date} {launch_date} {uploader} {tags} {tags:<category>} {source}
+site_name = "{site_name}"
+title = "Post #{post_id} - {site_name}"
+description = "View this {width}x{height} {type}"
+# Emit an adult content marker on unsafe posts
+show_rating = true
+# Emit a <meta name="post-id"> tag
+include_post_id_meta = true

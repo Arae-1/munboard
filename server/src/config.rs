@@ -30,6 +30,27 @@ pub enum RegexType {
     CustomField,
 }
 
+#[derive(Deserialize, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+pub enum EmbedImage {
+    Post,
+    Thumbnail,
+    Logo,
+    None,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EmbedConfig {
+    pub logo_url: SmallString,
+    pub image: EmbedImage,
+    pub site_name: SmallString,
+    pub title: SmallString,
+    pub description: SmallString,
+    pub show_rating: bool,
+    pub include_post_id_meta: bool,
+}
+
 #[derive(Deserialize)]
 pub struct ThumbnailConfig {
     pub avatar_width: u32,
@@ -286,6 +307,7 @@ pub struct Config {
     pub max_upload_size: usize,
     pub max_url_download_size: usize,
     pub thumbnails: ThumbnailConfig,
+    pub embed: EmbedConfig,
     pub smtp: Option<SmtpConfig>,
     pub anonymous_preferences: AnonymousPreferences,
     pub public_info: PublicConfig,
@@ -384,6 +406,21 @@ pub fn database_url(database_override: Option<&str>) -> String {
 
 const DEFAULT_CONFIG: &str = include_str!("../config.toml.dist");
 
+const VALID_EMBED_PLACEHOLDERS: &[&str] = &[
+    "site_name",
+    "post_id",
+    "width",
+    "height",
+    "dimensions",
+    "type",
+    "file_size",
+    "creation_date",
+    "launch_date",
+    "uploader",
+    "tags",
+    "source",
+];
+
 fn create_config(config_path: Option<&str>) -> Config {
     let mut config_builder =
         ConfigBuilder::<DefaultState>::default().add_source(File::from_str(DEFAULT_CONFIG, FileFormat::Toml));
@@ -400,5 +437,29 @@ fn create_config(config_path: Option<&str>) -> Config {
         }
     };
     config.public_info.can_send_mails = config.smtp.is_some();
+    validate_embed_config(&config.embed);
     config
+}
+
+fn validate_embed_config(embed: &EmbedConfig) {
+    for template in [&embed.site_name, &embed.title, &embed.description] {
+        let mut remaining: &str = template;
+        while let Some(open) = remaining.find('{') {
+            remaining = &remaining[open + 1..];
+            let Some(close) = remaining.find('}') else {
+                break;
+            };
+            let placeholder = &remaining[..close];
+            let is_valid = VALID_EMBED_PLACEHOLDERS.contains(&placeholder)
+                || (placeholder.starts_with("tags:") && placeholder.len() > "tags:".len());
+            if !is_valid {
+                eprintln!(
+                    "Invalid embed placeholder {{{placeholder}}}. Valid placeholders: {}",
+                    VALID_EMBED_PLACEHOLDERS.join(", ")
+                );
+                std::process::exit(1);
+            }
+            remaining = &remaining[close + 1..];
+        }
+    }
 }

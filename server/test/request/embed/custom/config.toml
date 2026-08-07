@@ -1,0 +1,3 @@
+[embed]
+title = "{post_id} upload"
+description = "{dimensions} {type} by {uploader}"
