@@ -4,6 +4,7 @@ password_secret = "change"
 content_secret = "change"
 
 # full url to the homepage of this szurubooru site, with no trailing slash
+# Also used for absolute URLs in OpenGraph embed pages.
 # domain: # example: http://example.com
 
 data_url = "data"
@@ -22,6 +23,9 @@ delete_source_files = false
 # Disabled by default because it causes uninuitive behaviors,
 # like tags not able to be removed due to being implied by another tag.
 append_tag_implications_on_post_edit = false
+
+# Enables OpenGraph embed pages for post links. Requires nginx to proxy /post/{id} to the backend (see INSTALL.md).
+enable_embeds = true
 
 # Threshold used for reverse search
 # Must be a number between 0 and 1

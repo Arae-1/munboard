@@ -5,7 +5,7 @@ use crate::config::{Action, Config};
 use crate::content::cache::RingCache;
 use crate::db::AsyncConnectionPool;
 use crate::extract::Ctx;
-use crate::{admin, api, config, db, filesystem};
+use crate::{admin, api, config, db, embed, filesystem};
 use axum::Router;
 use std::borrow::ToOwned;
 use std::error::Error;
@@ -142,12 +142,13 @@ pub fn initialize(state: &AppState) -> Result<(), Box<dyn Error + Send + Sync>> 
 }
 
 pub async fn run(state: AppState) -> std::io::Result<()> {
-    let (router, api) = api::routes(state).split_for_parts();
+    let (router, api) = api::routes(state.clone()).split_for_parts();
     let normalized_router = ServiceBuilder::new()
         .layer(NormalizePathLayer::trim_trailing_slash())
         .service(router);
     let app = Router::new()
         .merge(SwaggerUi::new("/docs").url("/apidoc/openapi.json", api))
+        .merge(embed::routes(state))
         .fallback_service(normalized_router);
 
     let address = format!("0.0.0.0:{}", config::port());

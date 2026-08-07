@@ -17,6 +17,7 @@ mod auth;
 mod config;
 mod content;
 mod db;
+mod embed;
 mod error;
 mod extract;
 mod filesystem;

@@ -98,3 +98,11 @@ with `--no-cache`.*
 #### Performance tip
 
 If you're already building yourself, consider setting `TARGET_CPU` to `native` in the `docker-compose.yml`. This instructions the Rust compiler to target your exact CPU architecture, resulting in better codegen and may result in measurable performance improvements to image decoding and reverse search operations.
+
+## OpenGraph embeds
+
+Oxibooru serves an OpenGraph embed page for each post link (`/post/{id}`). Chat applications such as Discord and Telegram use these pages to render a rich preview when a post link is shared.
+
+To enable this feature, the deployment's nginx must proxy `^/post/[0-9]+/?$` to the backend route `/embed/post/{id}`. See `client/nginx.conf.docker` for an example.
+
+Set `domain` in `config.toml` to the site's absolute URL. The embed page uses this value to generate absolute URLs for the post and its media. The `enable_embeds` option can disable the feature entirely.
