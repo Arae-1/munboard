@@ -225,9 +225,12 @@ fn full_tags(
     if is_video {
         let video_url = absolute_url(site_base, &post_hash.content_url(mime_type));
         tags.push(format!("<meta property=\"og:video\" content=\"{}\"/>", encode_text(&video_url)));
+        tags.push(format!("<meta property=\"og:video:secure_url\" content=\"{}\"/>", encode_text(&video_url)));
         if let Some(video_type) = video_mime_type(mime_type) {
             tags.push(format!("<meta property=\"og:video:type\" content=\"{video_type}\"/>"));
         }
+        tags.push(format!("<meta property=\"og:video:width\" content=\"{width}\"/>"));
+        tags.push(format!("<meta property=\"og:video:height\" content=\"{height}\"/>"));
     }
 
     match config.embed.image {
@@ -653,6 +656,9 @@ mod test {
         let body = response.text();
         assert!(body.contains("property=\"og:type\" content=\"video.other\""));
         assert!(body.contains("property=\"og:video\""));
+        assert!(body.contains("property=\"og:video:secure_url\""));
+        assert!(body.contains("property=\"og:video:width\" content=\"1980\""));
+        assert!(body.contains("property=\"og:video:height\" content=\"1080\""));
         assert!(body.contains("name=\"rating\" content=\"adult\""));
     }
 
