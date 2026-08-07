@@ -19,6 +19,7 @@ use lettre::{Message, SmtpTransport, Transport};
 use percent_encoding::NON_ALPHANUMERIC;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+use subtle::ConstantTimeEq;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
@@ -117,8 +118,7 @@ async fn request_reset(State(state): State<AppState>, Path(identifier): Path<Sma
                     <p>Otherwise, please ignore this email.</p>
                 </body>
             </html>"
-        ))
-    {
+        )) {
         Ok(email) => email,
         Err(_) => return Ok(Json(())),
     };
@@ -202,7 +202,7 @@ async fn reset_password(
             let stored_token = stored_token.ok_or(ApiError::UnauthorizedPasswordReset)?;
             let expires = expires.ok_or(ApiError::UnauthorizedPasswordReset)?;
 
-            if confirmation.token != stored_token {
+            if !bool::from(stored_token.as_bytes().ct_eq(confirmation.token.as_bytes())) {
                 return Err(ApiError::UnauthorizedPasswordReset);
             }
 
@@ -211,10 +211,7 @@ async fn reset_password(
             }
 
             diesel::update(user::table.find(user_id))
-                .set((
-                    user::password_reset_token.eq(None::<String>),
-                    user::password_reset_expires.eq(None::<DateTime>),
-                ))
+                .set((user::password_reset_token.eq(None::<String>), user::password_reset_expires.eq(None::<DateTime>)))
                 .execute(conn)?;
 
             let temporary_password = generate_temporary_password(TEMPORARY_PASSWORD_LENGTH);

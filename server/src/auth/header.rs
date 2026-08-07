@@ -103,7 +103,7 @@ async fn token_authentication(state: &AppState, credentials: &str) -> Result<Cli
         .optional()?
         .ok_or(AuthenticationError::UsernameTokenMismatch)?;
 
-    let expired = expiration_time.as_ref().is_some_and(|&time| time < DateTime::now());
+    let expired = expiration_time.as_ref().is_some_and(|&time| time <= DateTime::now());
     (enabled && !expired)
         .then_some(Client::new(Some(user_id), rank))
         .ok_or(AuthenticationError::ExpiredToken)

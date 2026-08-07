@@ -41,12 +41,15 @@ function makeRelativeTime(time) {
 }
 
 function makeThumbnail(url) {
+    const styleUrl = url
+        ? url.replace(/\\/g, "\\\\").replace(/'/g, "\\'")
+        : url;
     return makeElement(
         "span",
         url
             ? {
                 class: "thumbnail",
-                style: `background-image: url(\'${url}\')`,
+                style: `background-image: url('${styleUrl}')`,
             }
             : { class: "thumbnail empty" },
         makeElement("img", { alt: "thumbnail", src: url })

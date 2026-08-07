@@ -2,7 +2,7 @@ use crate::api::error::{ApiError, ApiResult, ByteSize};
 use crate::config::Config;
 use crate::content::hash::PostHash;
 use crate::content::thumbnail::ThumbnailCategory;
-use crate::content::upload::{verify_magic_bytes, UploadToken};
+use crate::content::upload::{UploadToken, verify_magic_bytes};
 use crate::model::enums::MimeType;
 use axum::body::Bytes;
 use futures::StreamExt;
@@ -54,6 +54,7 @@ where
 {
     let upload_token = UploadToken::new(mime_type);
     let upload_path = upload_token.path(config);
+    ensure_not_symlink(&upload_path)?;
     create_parent_directories(&upload_path)?;
 
     let mut total_bytes: usize = 0;
@@ -78,6 +79,7 @@ where
 /// Returns size of the thumbnail in bytes.
 pub fn save_custom_avatar(config: &Config, username: &str, thumbnail: &DynamicImage) -> ImageResult<i64> {
     let avatar_path = config.custom_avatar_path(username);
+    ensure_not_symlink(&avatar_path)?;
     create_parent_directories(&avatar_path)?;
 
     thumbnail.to_rgb8().save(&avatar_path)?;
@@ -101,6 +103,7 @@ pub fn save_post_thumbnail(
         ThumbnailCategory::Generated => post.generated_thumbnail_path(),
         ThumbnailCategory::Custom => post.custom_thumbnail_path(),
     };
+    ensure_not_symlink(&thumbnail_path)?;
     create_parent_directories(&thumbnail_path)?;
 
     thumbnail.to_rgb8().save(&thumbnail_path)?;
@@ -165,6 +168,7 @@ pub fn swap_posts(
 /// Tries simply renaming first and falls back to copy/remove if `from` and `to`
 /// are on different file systems.
 pub fn move_file(from: &Path, to: &Path) -> std::io::Result<()> {
+    ensure_not_symlink(to)?;
     create_parent_directories(to)?;
     if let Err(err) = std::fs::rename(from, to) {
         if err.kind() == ErrorKind::CrossesDevices {
@@ -214,6 +218,17 @@ pub fn spawn_temporary_uploads_cleanup_task(config: Arc<Config>) {
             }
         }
     });
+}
+
+/// Returns error if `path` exists and is a symlink.
+fn ensure_not_symlink(path: &Path) -> std::io::Result<()> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(std::io::Error::new(
+            ErrorKind::PermissionDenied,
+            format!("Refusing to write through symlink at {path:?}"),
+        )),
+        _ => Ok(()),
+    }
 }
 
 /// Removes `file` if it exists.
