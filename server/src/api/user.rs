@@ -12,7 +12,7 @@ use crate::extract::{Ctx, Json, JsonOrMultipart, Path, Query};
 use crate::model::enums::{AvatarStyle, ResourceProperty, ResourceType, UserRank};
 use crate::model::user::{NewUser, User};
 use crate::resource::user::{Field, UserInfo, Visibility};
-use crate::schema::{database_statistics, user};
+use crate::schema::{database_statistics, user, user_token};
 use crate::search::Builder;
 use crate::search::user::QueryBuilder;
 use crate::snapshot;
@@ -345,7 +345,31 @@ async fn update_impl(
     body: UserUpdateBody,
 ) -> ApiResult<Json<UserInfo>> {
     let custom_avatar = match Content::new(body.avatar_token, body.avatar_url) {
-        Some(content) => Some(content.thumbnail(&ctx.config, ThumbnailType::Avatar).await?),
+        Some(content) => {
+            // Verify avatar edit privileges before any avatar download, so
+            // unauthorized requests are rejected before fetching.
+            let user_id = connection_pool
+                .transaction({
+                    let username = username.clone();
+                    move |conn| {
+                        user::table
+                            .select(user::id)
+                            .filter(user::name.eq(&username))
+                            .first(conn)
+                            .optional()
+                    }
+                })
+                .await?
+                .ok_or(ApiError::NotFound(ResourceType::User))?;
+            let action = if ctx.client.id == Some(user_id) {
+                Action::UserEditSelfAvatar
+            } else {
+                Action::UserEditAnyAvatar
+            };
+            ctx.verify_privilege(action)?;
+
+            Some(content.thumbnail(&ctx.config, ThumbnailType::Avatar).await?)
+        }
         None if body.avatar_style == Some(AvatarStyle::Manual) => {
             return Err(ApiError::MissingContent(ResourceType::User));
         }
@@ -385,6 +409,10 @@ async fn update_impl(
                     diesel::update(user::table.find(user_id))
                         .set((user::password_salt.eq(salt.as_str()), user::password_hash.eq(hash)))
                         .execute(conn)?;
+
+                    // Revoke all of the user's API tokens so that a stolen token
+                    // does not survive a password change.
+                    diesel::delete(user_token::table.filter(user_token::user_id.eq(user_id))).execute(conn)?;
                 }
                 if let Some(email) = body.email {
                     let action = if editing_self {

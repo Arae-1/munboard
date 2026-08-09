@@ -19,12 +19,51 @@ http {
     server_tokens off;
     keepalive_timeout 65;
 
+    # HSTS: only send Strict-Transport-Security when the request actually
+    # reached this server over HTTPS. This example block listens on plain
+    # HTTP, so that only happens when an upstream proxy terminates TLS and
+    # forwards `X-Forwarded-Proto: https`. If you terminate TLS directly in
+    # nginx, move the HSTS header into the 443 server block instead, and add
+    # "preload" only after submitting the domain to https://hstspreload.org.
+    map $http_x_forwarded_proto $hsts_header {
+        https   "max-age=31536000; includeSubDomains";
+        default "";
+    }
+
+    # CORS: mirror the request's Origin only when it is the site itself
+    # (matches the Host header the browser used). Cross-site pages therefore
+    # receive no Access-Control-Allow-Origin and cannot read API responses;
+    # the bundled client is same-origin and never needs the header. If you
+    # deliberately serve the API to other origins, replace this map with an
+    # explicit allowlist of those origins instead of a wildcard.
+    map "$host|$http_origin" $cors_origin {
+        default "";
+        "~*^(?<h>[^|]+)\|https?://\k<h>(:\d+)?$" $http_origin;
+    }
+
     upstream backend {
         server __BACKEND__:6666;
     }
 
     server {
         listen 80 default_server;
+
+        # Security headers, sent on every response (including errors via
+        # `always`). The /api/ location repeats them below because a location
+        # with its own add_header does not inherit server-level ones.
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        # Starting-point CSP for the bundled client; tune it to your own
+        # client build:
+        #   - scripts load from 'self' plus unpkg.com (Ruffle Flash emulator)
+        #   - style-src 'unsafe-inline' because the client injects <style>
+        #     rules at runtime (see client/js/{tags,pools}.js)
+        #   - connect-src allows the WebSocket the client opens on port 8081
+        # If your client uses inline scripts, you will need to hash or nonce
+        # them instead of relaxing script-src.
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
+        add_header Strict-Transport-Security $hsts_header always;
 
         # Add Swagger UI proxying
         location ~ ^/(docs|apidoc) {
@@ -41,7 +80,17 @@ http {
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Real-IP $remote_addr;
 
-            add_header 'Access-Control-Allow-Origin' '*';
+            # CORS is granted only when the Origin is the site itself (see the
+            # $cors_origin map above); the bundled client is same-origin.
+            add_header 'Access-Control-Allow-Origin' $cors_origin always;
+            # Repeat the server-level security headers here: a location that
+            # defines its own add_header does not inherit server-level ones.
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header X-Frame-Options "DENY" always;
+            add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+            add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
+            add_header Strict-Transport-Security $hsts_header always;
+
             if ($request_method = 'OPTIONS') {
                 add_header 'Access-Control-Allow-Methods'
                     'GET, POST, PUT, DELETE, OPTIONS';

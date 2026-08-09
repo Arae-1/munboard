@@ -54,7 +54,25 @@
             <section class='source'>
                 Source: <% for (let i = 0; i < ctx.post.sourceSplit.length; i++) { %>
                     <% if (i != 0) { %>&middot;<% } %>
-                    <a href='<%- ctx.post.sourceSplit[i] %>' title='<%- ctx.post.sourceSplit[i] %>'><%- ctx.extractRootDomain(ctx.post.sourceSplit[i]) %></a>
+                    <% let sourceUrl = ctx.post.sourceSplit[i];
+                       // Only render clickable links for allowlisted schemes or
+                       // scheme-less relative paths. Mirror the browser's URL
+                       // preprocessing so "java\tscript:…" cannot bypass the check.
+                       let sourceScheme = /^([a-z][a-z0-9+.-]*):/i.exec(
+                           sourceUrl
+                               .replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, "")
+                               .replace(/[\t\n\r]+/g, "")
+                       );
+                       let sourceIsLink =
+                           !sourceScheme ||
+                           ["http", "https", "mailto", "ftp"].includes(
+                               sourceScheme[1].toLowerCase()
+                           ); %>
+                    <% if (sourceIsLink) { %>
+                        <a href='<%- sourceUrl %>' title='<%- sourceUrl %>'><%- ctx.extractRootDomain(sourceUrl) %></a>
+                    <% } else { %>
+                        <%- sourceUrl %>
+                    <% } %>
                 <% } %>
             </section>
         <% } %>

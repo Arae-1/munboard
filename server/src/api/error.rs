@@ -120,8 +120,6 @@ pub enum ApiError {
     StdIo(#[from] std::io::Error),
     SwfDecoding(#[from] swf::error::Error),
     TaskJoin(#[from] tokio::task::JoinError),
-    #[error("Password reset already requested")]
-    ResetAlreadyRequested,
     #[error("Password reset token is invalid")]
     UnauthorizedPasswordReset,
     UnsupportedExtension(#[from] crate::model::enums::ParseExtensionError),
@@ -170,7 +168,6 @@ impl ApiError {
             | Self::InvalidUploadToken
             | Self::InvalidUserRank
             | Self::NoNamesGiven(_)
-            | Self::ResetAlreadyRequested
             | Self::NotAnInteger(_)
             | Self::SelfMerge(_)
             | Self::SwfDecoding(_) => StatusCode::UNPROCESSABLE_ENTITY,
@@ -242,7 +239,6 @@ impl ApiError {
             Self::PathRejection(_) => "Path Rejection",
             Self::QueryRejection(_) => "Query Rejection",
             Self::Request(_) => "Request Error",
-            Self::ResetAlreadyRequested => "Reset Already Requested",
             Self::ResourceModified => "Resource Modified",
             Self::SelfMerge(_) => "Self Merge",
             Self::StdIo(_) => "IO Error",
@@ -259,9 +255,29 @@ impl ApiError {
             title: self.category(),
             description: match self {
                 Self::Multipart(err) => err.body_text(),
+                _ if self.is_internal_error() => "An internal error occurred.".to_string(),
                 _ => self.to_string(),
             },
         }
+    }
+
+    /// Returns true for unexpected server-side failures whose `Display` may embed
+    /// raw internal detail (e.g. database or connection error text) that must not
+    /// be sent to clients. The full detail is still logged server-side by the
+    /// `log_error` middleware, which records `%err.to_string()` for every response.
+    fn is_internal_error(&self) -> bool {
+        matches!(
+            self,
+            Self::FailedConnection(_)
+                | Self::FailedEmailTransport(_)
+                | Self::FailedQuery(_)
+                | Self::InvalidHeader(_)
+                | Self::StdIo(_)
+                | Self::TaskJoin(_)
+                | Self::FailedAuthentication(
+                    AuthenticationError::FailedConnection(_) | AuthenticationError::FailedQuery(_)
+                )
+        )
     }
 }
 

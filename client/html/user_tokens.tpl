@@ -12,10 +12,10 @@
                 <div class='token-flex-row no-wrap'>Last used:</div>
             </div>
             <div class='token-flex-column full-width'>
-                <div class='token-flex-row'><%= token.token %></div>
+                <div class='token-flex-row'><%- token.token %></div>
                 <div class='token-flex-row'>
                     <% if (token.note !== null) { %>
-                        <%= token.note %>
+                        <%- token.note %>
                     <% } else { %>
                         No note
                     <% } %>

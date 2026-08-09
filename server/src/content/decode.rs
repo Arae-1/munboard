@@ -1,4 +1,4 @@
-use crate::api::error::{ApiError, ApiResult};
+use crate::api::error::{ApiError, ApiResult, ByteSize};
 use crate::config::Config;
 use crate::content::{self, flash};
 use crate::model::enums::{MimeType, PostType};
@@ -7,11 +7,24 @@ use ffmpeg_sidecar::event::{FfmpegEvent, LogLevel};
 use image::codecs::{gif::GifDecoder, webp::WebPDecoder};
 use image::{AnimationDecoder, DynamicImage, ImageDecoder, ImageFormat, ImageReader, Limits, RgbImage, RgbaImage};
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufReader, Read, Seek};
 use std::path::Path;
 use std::process::Command;
 use swf::Tag;
 use tracing::error;
+
+/// Maximum width or height (in pixels) of an image or frame we are willing to
+/// decode. Rejects pathological dimensions before decoders allocate multi-GB
+/// buffers.
+const MAX_IMAGE_DIMENSION: u32 = 16384; // 16K
+
+/// Maximum number of bytes image decoders may allocate while decoding.
+const MAX_IMAGE_ALLOCATION: u64 = 512 * 1024 * 1024; // 512 MiB
+
+/// Maximum declared uncompressed size of an SWF file. The SWF library
+/// pre-allocates the declared size before parsing, so this prevents multi-GB
+/// allocations from a crafted header (decompression bomb).
+const MAX_SWF_UNCOMPRESSED_SIZE: u64 = 256 * 1024 * 1024; // 256 MiB
 
 /// Returns a representative image for the given content.
 /// For images, this is simply the decoded image.
@@ -58,11 +71,37 @@ pub fn video_has_audio(path: &Path) -> ApiResult<bool> {
     Ok(false)
 }
 
+/// Decompresses the SWF file at `path`, after rejecting files whose declared
+/// uncompressed length exceeds [`MAX_SWF_UNCOMPRESSED_SIZE`].
+///
+/// The SWF library allocates a buffer of the declared size up front, so a
+/// crafted header could otherwise force a multi-GB pre-allocation.
+fn decompress_swf_file(path: &Path) -> ApiResult<swf::SwfBuf> {
+    let mut reader = BufReader::new(File::open(path)?);
+    // SWF header: 3-byte signature ("FWS"/"CWS"/"ZWS"), 1-byte version, then a
+    // little-endian u32 giving the uncompressed file length (header included).
+    let mut header = [0u8; 8];
+    reader.read_exact(&mut header)?;
+    if !header.starts_with(b"FWS") && !header.starts_with(b"CWS") && !header.starts_with(b"ZWS") {
+        return Err(swf::error::Error::invalid_data("Invalid SWF signature").into());
+    }
+    let uncompressed_len = u32::from_le_bytes([header[4], header[5], header[6], header[7]]);
+    if u64::from(uncompressed_len) > MAX_SWF_UNCOMPRESSED_SIZE {
+        return Err(ApiError::FileTooLarge(ByteSize(MAX_SWF_UNCOMPRESSED_SIZE as usize)));
+    }
+    reader.seek(std::io::SeekFrom::Start(0))?;
+    let swf_buf = swf::decompress_swf(reader)?;
+    // A crafted zlib stream can inflate beyond its declared length, so also
+    // reject the result if it actually exceeds the budget.
+    if swf_buf.data.len() as u64 > MAX_SWF_UNCOMPRESSED_SIZE {
+        return Err(ApiError::FileTooLarge(ByteSize(MAX_SWF_UNCOMPRESSED_SIZE as usize)));
+    }
+    Ok(swf_buf)
+}
+
 /// Returns if the swf at `path` has audio.
 pub fn swf_has_audio(path: &Path) -> ApiResult<bool> {
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
-    let swf_buf = swf::decompress_swf(reader)?;
+    let swf_buf = decompress_swf_file(path)?;
     let swf = swf::parse_swf(&swf_buf)?;
 
     Ok(swf.tags.iter().any(|tag| {
@@ -111,16 +150,20 @@ fn image(file_path: &Path, format: ImageFormat) -> ApiResult<DynamicImage> {
 /// Decodes a representative frame of the image or video at the given `path`.
 fn ffmpeg_frame(path: &Path, post_type: PostType) -> ApiResult<Option<DynamicImage>> {
     let is_video_format = matches!(post_type, PostType::Video | PostType::Flash);
+    // Scale frames down to the decode dimension limit before their raw bytes
+    // are transferred into this process, so an oversized video cannot force a
+    // multi-GB frame allocation.
+    let scale = format!("scale=w='min({MAX_IMAGE_DIMENSION},iw)':h='min({MAX_IMAGE_DIMENSION},ih)':force_original_aspect_ratio=decrease");
     let filter = if is_video_format {
-        "thumbnail,format=rgb24"
+        format!("thumbnail,format=rgb24,{scale}")
     } else {
-        "format=rgba"
+        format!("format=rgba,{scale}")
     };
 
     let path_str = path.to_string_lossy();
     let iter = FfmpegCommand::new_with_path(FFMPEG_PATH)
         .input(&path_str)
-        .args(["-t", "30", "-vf", filter, "-frames:v", "1", "-f", "rawvideo", "-"])
+        .args(["-t", "30", "-vf", filter.as_str(), "-frames:v", "1", "-f", "rawvideo", "-"])
         .spawn()?
         .iter()
         .map_err(|err| ApiError::FfmpegError(err.into_boxed_dyn_error()))?;
@@ -128,6 +171,9 @@ fn ffmpeg_frame(path: &Path, post_type: PostType) -> ApiResult<Option<DynamicIma
     for event in iter {
         match event {
             FfmpegEvent::OutputFrame(f) => {
+                if f.width > MAX_IMAGE_DIMENSION || f.height > MAX_IMAGE_DIMENSION {
+                    return Err(ApiError::FfmpegError("Decoded frame exceeds maximum dimensions".into()));
+                }
                 let buffer_len = f.data.len();
                 let extracted_frame = if is_video_format {
                     RgbImage::from_raw(f.width, f.height, f.data).map(DynamicImage::ImageRgb8)
@@ -159,7 +205,7 @@ fn pdf_representative_image(file_path: &Path) -> ApiResult<DynamicImage> {
         .status();
 
     let result = match status {
-        Ok(s) if s.success() => image::open(&png_path)
+        Ok(s) if s.success() => decode_pdf_render(Path::new(&png_path))
             .or_else(|_| Ok(DynamicImage::ImageRgb8(RgbImage::new(1, 1)))),
         _ => Ok(DynamicImage::ImageRgb8(RgbImage::new(1, 1))),
     };
@@ -167,11 +213,19 @@ fn pdf_representative_image(file_path: &Path) -> ApiResult<DynamicImage> {
     result
 }
 
+/// Decodes the PNG rendered by pdftoppm with the same limits as regular image
+/// uploads, so an oversized PDF page cannot force a multi-GB allocation.
+fn decode_pdf_render(png_path: &Path) -> ApiResult<DynamicImage> {
+    let file = content::map_read_result(File::open(png_path))?;
+    let mut reader = ImageReader::new(BufReader::new(file));
+    reader.set_format(ImageFormat::Png);
+    reader.limits(image_reader_limits());
+    reader.decode().map_err(ApiError::from)
+}
+
 /// Search swf tags for the largest decodable image
 fn flash_image(config: &Config, path: &Path) -> ApiResult<Option<DynamicImage>> {
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
-    let swf_buf = swf::decompress_swf(reader)?;
+    let swf_buf = decompress_swf_file(path)?;
     let swf = swf::parse_swf(&swf_buf)?;
 
     let encoding_table = swf
@@ -191,7 +245,7 @@ fn flash_image(config: &Config, path: &Path) -> ApiResult<Option<DynamicImage>> 
         .filter_map(|tag| match tag {
             Tag::DefineBits { id: _, jpeg_data } => {
                 let jpeg_data = flash::glue_tables_to_jpeg(jpeg_data, encoding_table);
-                Some(image::load_from_memory_with_format(&jpeg_data, ImageFormat::Jpeg).map_err(flash::Error::from))
+                Some(flash::decode_embedded_image(&jpeg_data, ImageFormat::Jpeg))
             }
             Tag::DefineBitsLossless(bits) => flash::decode_define_bits_lossless(bits).transpose(),
             Tag::DefineBitsJpeg2 { id: _, jpeg_data } => Some(flash::decode_define_bits_jpeg(jpeg_data, None)),
@@ -295,9 +349,9 @@ fn webp_is_animated(path: &Path) -> ApiResult<bool> {
 
 /// Returns maximum decoded image size.
 fn image_reader_limits() -> Limits {
-    const GB: u64 = 1024_u64.pow(3);
-
     let mut limits = Limits::no_limits();
-    limits.max_alloc = Some(4 * GB);
+    limits.max_image_width = Some(MAX_IMAGE_DIMENSION);
+    limits.max_image_height = Some(MAX_IMAGE_DIMENSION);
+    limits.max_alloc = Some(MAX_IMAGE_ALLOCATION);
     limits
 }

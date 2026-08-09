@@ -8,6 +8,7 @@ use axum::response::Redirect;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use hmac::{KeyInit, Mac, SimpleHmac};
+use subtle::ConstantTimeEq;
 use utoipa_axum::router::OpenApiRouter;
 
 pub fn routes() -> OpenApiRouter<AppState> {
@@ -22,7 +23,8 @@ async fn redirect(State(state): State<AppState>, Path(filename): Path<String>) -
         .ok()
         .ok_or(StatusCode::UNSUPPORTED_MEDIA_TYPE)?;
 
-    if post_hash != legacy_url_hash(&state.config, post_id) {
+    let expected_hash = legacy_url_hash(&state.config, post_id);
+    if !bool::from(post_hash.as_bytes().ct_eq(expected_hash.as_bytes())) {
         return Err(StatusCode::NOT_FOUND);
     }
 

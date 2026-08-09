@@ -24,7 +24,7 @@ use axum::Router;
 use diesel::dsl::exists;
 use diesel::prelude::*;
 use diesel::OptionalExtension;
-use html_escape::encode_text;
+use html_escape::encode_quoted_attribute;
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -182,6 +182,14 @@ async fn post_page(
     html_page(build_page(&page_title, &og_tags, &base_href(&headers), &icon_link))
 }
 
+/// Escapes `value` for inclusion in the embed page: the standard HTML entities
+/// plus single and double quotes and backticks, so the same encoding is safe in
+/// both element text and quoted attribute values. `encode_text` leaves quotes
+/// intact, which would allow breaking out of the `content="..."` attributes.
+fn encode_html(value: &str) -> String {
+    encode_quoted_attribute(value).replace('`', "&#96;")
+}
+
 /// Builds the meta tags shown for a visible post.
 fn full_tags(
     config: &Config,
@@ -199,18 +207,18 @@ fn full_tags(
     let og_url = absolute_url(site_base, &format!("post/{post_id}"));
 
     let mut tags = vec![
-        format!("<meta name=\"description\" content=\"{}\"/>", encode_text(description)),
-        format!("<meta property=\"og:site_name\" content=\"{}\"/>", encode_text(site_name_slot)),
-        format!("<meta property=\"og:title\" content=\"{}\"/>", encode_text(title)),
-        format!("<meta property=\"og:description\" content=\"{}\"/>", encode_text(description)),
-        format!("<meta property=\"og:url\" content=\"{}\"/>", encode_text(&og_url)),
-        format!("<link rel=\"canonical\" href=\"{}\"/>", encode_text(&og_url)),
+        format!("<meta name=\"description\" content=\"{}\"/>", encode_html(description)),
+        format!("<meta property=\"og:site_name\" content=\"{}\"/>", encode_html(site_name_slot)),
+        format!("<meta property=\"og:title\" content=\"{}\"/>", encode_html(title)),
+        format!("<meta property=\"og:description\" content=\"{}\"/>", encode_html(description)),
+        format!("<meta property=\"og:url\" content=\"{}\"/>", encode_html(&og_url)),
+        format!("<link rel=\"canonical\" href=\"{}\"/>", encode_html(&og_url)),
     ];
     if config.embed.include_post_id_meta {
-        tags.push(format!("<meta name=\"post-id\" content=\"{}\"/>", encode_text(&post_id.to_string())));
+        tags.push(format!("<meta name=\"post-id\" content=\"{}\"/>", encode_html(&post_id.to_string())));
     }
-    tags.push(format!("<meta name=\"twitter:title\" content=\"{}\"/>", encode_text(title)));
-    tags.push(format!("<meta name=\"twitter:description\" content=\"{}\"/>", encode_text(description)));
+    tags.push(format!("<meta name=\"twitter:title\" content=\"{}\"/>", encode_html(title)));
+    tags.push(format!("<meta name=\"twitter:description\" content=\"{}\"/>", encode_html(description)));
 
     if safety == PostSafety::Unsafe && config.embed.show_rating {
         tags.push("<meta name=\"rating\" content=\"adult\"/>".to_string());
@@ -224,8 +232,8 @@ fn full_tags(
     ));
     if is_video {
         let video_url = absolute_url(site_base, &post_hash.content_url(mime_type));
-        tags.push(format!("<meta property=\"og:video\" content=\"{}\"/>", encode_text(&video_url)));
-        tags.push(format!("<meta property=\"og:video:secure_url\" content=\"{}\"/>", encode_text(&video_url)));
+        tags.push(format!("<meta property=\"og:video\" content=\"{}\"/>", encode_html(&video_url)));
+        tags.push(format!("<meta property=\"og:video:secure_url\" content=\"{}\"/>", encode_html(&video_url)));
         if let Some(video_type) = video_mime_type(mime_type) {
             tags.push(format!("<meta property=\"og:video:type\" content=\"{video_type}\"/>"));
         }
@@ -238,19 +246,19 @@ fn full_tags(
         EmbedImage::Thumbnail => tags.extend(thumbnail_image_tags(config, site_base, &post_hash)),
         EmbedImage::Logo if !config.embed.logo_url.is_empty() => {
             let logo_url = absolute_url(site_base, &config.embed.logo_url);
-            tags.push(format!("<meta property=\"og:image\" content=\"{}\"/>", encode_text(&logo_url)));
+            tags.push(format!("<meta property=\"og:image\" content=\"{}\"/>", encode_html(&logo_url)));
             tags.push("<meta name=\"twitter:card\" content=\"summary\"/>".to_string());
-            tags.push(format!("<meta name=\"twitter:image\" content=\"{}\"/>", encode_text(&logo_url)));
+            tags.push(format!("<meta name=\"twitter:image\" content=\"{}\"/>", encode_html(&logo_url)));
         }
         EmbedImage::Logo | EmbedImage::Post => match post_type {
             PostType::Image | PostType::Animation => {
                 let image_url = absolute_url(site_base, &post_hash.content_url(mime_type));
                 let twitter_card = if width >= 280 && height >= 150 { "summary_large_image" } else { "summary" };
-                tags.push(format!("<meta property=\"og:image\" content=\"{}\"/>", encode_text(&image_url)));
+                tags.push(format!("<meta property=\"og:image\" content=\"{}\"/>", encode_html(&image_url)));
                 tags.push(format!("<meta property=\"og:image:width\" content=\"{width}\"/>"));
                 tags.push(format!("<meta property=\"og:image:height\" content=\"{height}\"/>"));
                 tags.push(format!("<meta name=\"twitter:card\" content=\"{twitter_card}\"/>"));
-                tags.push(format!("<meta name=\"twitter:image\" content=\"{}\"/>", encode_text(&image_url)));
+                tags.push(format!("<meta name=\"twitter:image\" content=\"{}\"/>", encode_html(&image_url)));
             }
             PostType::Video | PostType::Flash | PostType::Document => {
                 tags.extend(thumbnail_image_tags(config, site_base, &post_hash));
@@ -265,11 +273,11 @@ fn full_tags(
 fn thumbnail_image_tags(config: &Config, site_base: &str, post_hash: &PostHash) -> Vec<String> {
     let thumbnail_url = absolute_url(site_base, &post_hash.thumbnail_url());
     vec![
-        format!("<meta property=\"og:image\" content=\"{}\"/>", encode_text(&thumbnail_url)),
+        format!("<meta property=\"og:image\" content=\"{}\"/>", encode_html(&thumbnail_url)),
         format!("<meta property=\"og:image:width\" content=\"{}\"/>", config.thumbnails.post_width),
         format!("<meta property=\"og:image:height\" content=\"{}\"/>", config.thumbnails.post_height),
         "<meta name=\"twitter:card\" content=\"summary\"/>".to_string(),
-        format!("<meta name=\"twitter:image\" content=\"{}\"/>", encode_text(&thumbnail_url)),
+        format!("<meta name=\"twitter:image\" content=\"{}\"/>", encode_html(&thumbnail_url)),
     ]
 }
 
@@ -277,17 +285,17 @@ fn thumbnail_image_tags(config: &Config, site_base: &str, post_hash: &PostHash) 
 fn minimal_tags(config: &Config, post_id: i64, site_base: &str, title: &str, site_name_slot: &str) -> String {
     let og_url = absolute_url(site_base, &format!("post/{post_id}"));
     let mut tags = vec![
-        format!("<meta property=\"og:site_name\" content=\"{}\"/>", encode_text(site_name_slot)),
-        format!("<meta property=\"og:title\" content=\"{}\"/>", encode_text(title)),
-        format!("<meta property=\"og:url\" content=\"{}\"/>", encode_text(&og_url)),
-        format!("<link rel=\"canonical\" href=\"{}\"/>", encode_text(&og_url)),
+        format!("<meta property=\"og:site_name\" content=\"{}\"/>", encode_html(site_name_slot)),
+        format!("<meta property=\"og:title\" content=\"{}\"/>", encode_html(title)),
+        format!("<meta property=\"og:url\" content=\"{}\"/>", encode_html(&og_url)),
+        format!("<link rel=\"canonical\" href=\"{}\"/>", encode_html(&og_url)),
     ];
     if config.embed.include_post_id_meta {
-        tags.push(format!("<meta name=\"post-id\" content=\"{}\"/>", encode_text(&post_id.to_string())));
+        tags.push(format!("<meta name=\"post-id\" content=\"{}\"/>", encode_html(&post_id.to_string())));
     }
     tags.push("<meta property=\"og:type\" content=\"website\"/>".to_string());
     tags.push("<meta name=\"twitter:card\" content=\"summary\"/>".to_string());
-    tags.push(format!("<meta name=\"twitter:title\" content=\"{}\"/>", encode_text(title)));
+    tags.push(format!("<meta name=\"twitter:title\" content=\"{}\"/>", encode_html(title)));
     tags.join("\n")
 }
 
@@ -522,7 +530,7 @@ fn icon_link(logo_url: &str, site_base: &str) -> String {
     } else {
         absolute_url(site_base, logo_url)
     };
-    format!("<link rel='shortcut icon' type='image/png' href='{}'/>", encode_text(&href))
+    format!("<link rel='shortcut icon' type='image/png' href='{}'/>", encode_html(&href))
 }
 
 /// Returns the `og:video:type` for `mime_type`, if a known video type exists.
@@ -579,9 +587,9 @@ fn base_href(headers: &HeaderMap) -> String {
 /// Replaces the placeholders in the page template.
 fn build_page(title: &str, og_tags: &str, base_href: &str, icon_link: &str) -> String {
     PAGE_TEMPLATE
-        .replace("%%TITLE%%", &encode_text(title))
+        .replace("%%TITLE%%", &encode_html(title))
         .replace("%%OG_TAGS%%", og_tags)
-        .replace("%%BASE_HREF%%", &encode_text(base_href))
+        .replace("%%BASE_HREF%%", &encode_html(base_href))
         .replace("%%ICON_LINK%%", icon_link)
 }
 
@@ -618,6 +626,12 @@ mod test {
 
     fn server() -> TestServer {
         TestServer::new(ServiceExt::<Request>::into_make_service(routes(get_state()))).unwrap()
+    }
+
+    #[test]
+    fn encode_html_escapes_quotes_and_backticks() {
+        assert_eq!(encode_html("a\"b'c`d"), "a&quot;b&#x27;c&#96;d");
+        assert_eq!(encode_html("&<>"), "&amp;&lt;&gt;");
     }
 
     fn server_with_config(relative_path: &str) -> TestServer {

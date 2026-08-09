@@ -36,7 +36,9 @@ pub fn routes() -> OpenApiRouter<AppState> {
 /// rightful owner of the account.
 ///
 /// For security, this endpoint always returns 200 regardless of whether the
-/// user exists or has an email configured, to prevent user enumeration.
+/// user exists, has an email configured, or already has a pending reset token,
+/// to prevent user enumeration. A still-valid pending token is never
+/// overwritten and no duplicate email is sent.
 #[utoipa::path(
     get,
     path = "/password-reset/{identifier}",
@@ -69,9 +71,13 @@ async fn request_reset(State(state): State<AppState>, Path(identifier): Path<Sma
         None => return Ok(Json(())),
     };
 
+    // If a valid (non-expired) reset token already exists, do not overwrite it
+    // and do not send another email: an attacker must not be able to invalidate
+    // a victim's in-flight reset link or flood their inbox. Respond identically
+    // to a non-existent identifier to keep the endpoint uniform.
     if let (Some(_), Some(expires)) = (&existing_token, &existing_expiry) {
         if *expires > DateTime::now() {
-            return Err(ApiError::ResetAlreadyRequested);
+            return Ok(Json(()));
         }
     }
 
@@ -127,17 +133,34 @@ async fn request_reset(State(state): State<AppState>, Path(identifier): Path<Sma
         .set((user::password_reset_token.eq(&reset_token), user::password_reset_expires.eq(expires)))
         .execute(conn.as_mut())?;
 
-    let mut smtp_builder = SmtpTransport::relay(&smtp_info.host)?;
-    if let (Some(smtp_username), Some(smtp_password)) = (smtp_info.username.as_ref(), smtp_info.password.as_ref()) {
-        let credentials = Credentials::new(smtp_username.to_string(), smtp_password.to_string());
-        smtp_builder = smtp_builder.credentials(credentials);
-    }
-    if let Some(port) = smtp_info.port {
-        smtp_builder = smtp_builder.port(port);
-    }
-    let mailer = smtp_builder.build();
+    // Send the email in the background so the response status and timing do not
+    // depend on the SMTP round-trip (a relay or send failure must not reveal
+    // whether the identifier exists). The token is stored in the database
+    // before the send, so a failed delivery can simply be retried.
+    let smtp_host = smtp_info.host.clone();
+    let smtp_username = smtp_info.username.clone();
+    let smtp_password = smtp_info.password.clone();
+    let smtp_port = smtp_info.port;
+    let _ = tokio::task::spawn_blocking(move || {
+        let mut smtp_builder = match SmtpTransport::relay(&smtp_host) {
+            Ok(builder) => builder,
+            Err(err) => {
+                tracing::warn!("Unable to build SMTP transport for password reset email: {err}");
+                return;
+            }
+        };
+        if let (Some(username), Some(password)) = (smtp_username.as_ref(), smtp_password.as_ref()) {
+            smtp_builder = smtp_builder.credentials(Credentials::new(username.to_string(), password.to_string()));
+        }
+        if let Some(port) = smtp_port {
+            smtp_builder = smtp_builder.port(port);
+        }
+        let mailer = smtp_builder.build();
 
-    let _ = mailer.send(&email);
+        if let Err(err) = mailer.send(&email) {
+            tracing::warn!("Unable to send password reset email: {err}");
+        }
+    });
 
     Ok(Json(()))
 }

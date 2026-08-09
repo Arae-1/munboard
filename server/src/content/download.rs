@@ -6,22 +6,39 @@ use crate::model::enums::MimeType;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue, LOCATION, REFERER};
 use reqwest::redirect;
 use reqwest::{Client, StatusCode};
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::str::FromStr;
+use std::time::Duration;
 use tokio::net::lookup_host;
 use url::Url;
 
+fn is_private_ipv4(ip: &Ipv4Addr) -> bool {
+    let octets = ip.octets();
+    match (octets[0], octets[1]) {
+        (0, _) => true,             // 0.0.0.0/8, including the unspecified/broadcast address
+        (10, _) => true,            // 10.0.0.0/8
+        (127, _) => true,           // 127.0.0.0/8 loopback
+        (169, 254) => true,         // 169.254.0.0/16 link-local
+        (172, 16..=31) => true,     // 172.16.0.0/12
+        (192, 168) => true,         // 192.168.0.0/16
+        (100, 64..=127) => true,    // 100.64.0.0/10 CGNAT
+        (192, 0) => true,           // 192.0.0.0/24
+        (198, 18..=19) => true,     // 198.18.0.0/15 benchmarking
+        (224..=239, _) => true,     // 224.0.0.0/4 multicast
+        _ => false,
+    }
+}
+
 fn is_private_ip(addr: &IpAddr) -> bool {
     match addr {
-        IpAddr::V4(ip) => {
-            let octets = ip.octets();
-            octets[0] == 127
-                || octets[0] == 10
-                || (octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31)
-                || (octets[0] == 192 && octets[1] == 168)
-                || (octets[0] == 169 && octets[1] == 254)
+        IpAddr::V4(ip) => is_private_ipv4(ip),
+        IpAddr::V6(ip) => {
+            ip.is_loopback()
+                || ip.is_unspecified()
+                || (ip.segments()[0] & 0xfe00) == 0xfc00 // fc00::/7 ULA
+                || (ip.segments()[0] & 0xffc0) == 0xfe80 // fe80::/10 link-local
+                || ip.to_ipv4_mapped().is_some_and(|ip| is_private_ipv4(&ip))
         }
-        IpAddr::V6(ip) => ip.is_loopback() || (ip.segments()[0] & 0xfe00) == 0xfc00,
     }
 }
 
@@ -65,6 +82,7 @@ pub async fn from_url(config: &Config, url: Url) -> ApiResult<UploadToken> {
         let mut client_builder = Client::builder()
             .user_agent(FAKE_USER_AGENT)
             .redirect(redirect::Policy::none())
+            .timeout(Duration::from_secs(30))
             .resolve_to_addrs(&host, &addrs);
         if let Some(referer) = &referer {
             let mut headers = HeaderMap::new();

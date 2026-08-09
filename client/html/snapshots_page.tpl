@@ -3,14 +3,14 @@
         <ul>
             <% for (let item of ctx.response.results) { %>
                 <li>
-                    <div class='header operation-<%= item.operation %>'>
+                    <div class='header operation-<%- item.operation %>'>
                         <span class='time'>
                             <%= ctx.makeRelativeTime(item.time) %>
                         </span>
 
                         <%= ctx.makeUserLink(item.user) %>
 
-                        <%= item.operation %>
+                        <%- item.operation %>
 
                         <%= ctx.makeResourceLink(item.type, item.id, item.data) %>
                     </div>

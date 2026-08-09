@@ -1,11 +1,18 @@
 "use strict";
 
 const views = require("../util/views.js");
+const misc = require("../util/misc.js");
 
 const template = views.getTemplate("snapshots-page");
 
 function _extend(target, source) {
     target.push.apply(target, source);
+}
+
+function _escape(value) {
+    // Snapshot diff values are user-controlled and get inserted into the DOM
+    // as HTML, so escape them with the codebase's standard HTML escaper.
+    return misc.escapeHtml(value === null || value === undefined ? "" : value);
 }
 
 function _formatBasicChange(diff, text) {
@@ -14,15 +21,15 @@ function _formatBasicChange(diff, text) {
         const addedItems = diff.added;
         const removedItems = diff.removed;
         if (addedItems && addedItems.length) {
-            lines.push(`Added ${text} (${addedItems.join(", ")})`);
+            lines.push(`Added ${text} (${addedItems.map(_escape).join(", ")})`);
         }
         if (removedItems && removedItems.length) {
-            lines.push(`Removed ${text} (${removedItems.join(", ")})`);
+            lines.push(`Removed ${text} (${removedItems.map(_escape).join(", ")})`);
         }
     } else if (diff.type === "primitive change") {
         const oldValue = diff["old-value"];
         const newValue = diff["new-value"];
-        lines.push(`Changed ${text} (${oldValue} &rarr; ${newValue})`);
+        lines.push(`Changed ${text} (${_escape(oldValue)} &rarr; ${_escape(newValue)})`);
     } else {
         lines.push(`Changed ${text}`);
     }
@@ -35,7 +42,7 @@ function _makeResourceLink(type, id, data) {
     } else if (type === "tag") {
         return views.makeTagLink(id, true);
     } else if (type === "tag_category") {
-        return 'category "' + id + '"';
+        return 'category "' + _escape(id) + '"';
     } else if (type === "pool") {
         return views.makePoolLink(id, false, false, data);
     }
@@ -50,10 +57,10 @@ function _makeItemCreation(type, data) {
         let text = key[0].toUpperCase() + key.substr(1).toLowerCase();
         if (Array.isArray(data[key])) {
             if (data[key].length) {
-                lines.push(`${text}: ${data[key].join(", ")}`);
+                lines.push(`${_escape(text)}: ${data[key].map(_escape).join(", ")}`);
             }
         } else {
-            lines.push(`${text}: ${data[key]}`);
+            lines.push(`${_escape(text)}: ${_escape(data[key])}`);
         }
     }
     return lines.join("<br/>");

@@ -44,10 +44,48 @@ pub fn split_once<P: Pattern>(text: &str, pattern: P) -> Option<(&str, &str)> {
 /// Parses string-based `condition`.
 pub fn str_condition(condition: &str) -> StrCondition {
     if condition.contains('*') {
-        StrCondition::WildCard(unescape(condition).replace('*', "%").replace('_', "\\_").to_lowercase())
+        StrCondition::WildCard(wildcard_pattern(condition))
     } else {
         StrCondition::Regular(parse_regular_str(condition))
     }
+}
+
+/// Builds a Postgres `LIKE` pattern from a wildcard `condition`.
+///
+/// `*` is the user-facing wildcard and becomes `%`. Everything else matches
+/// literally: `%` and `_` are escaped to `\%` and `\_`, a backslash-escaped
+/// `\*` stays a literal `*`, and `\` itself is escaped to `\\`. `\` is the
+/// escape character, matching the existing `\_` LIKE convention.
+fn wildcard_pattern(condition: &str) -> String {
+    let mut pattern = String::with_capacity(condition.len());
+    let mut escaped = false;
+    for c in condition.chars() {
+        if escaped {
+            escaped = false;
+            match c {
+                // An escaped `*` is a literal asterisk, not a wildcard.
+                '*' => pattern.push('*'),
+                '%' => pattern.push_str("\\%"),
+                '_' => pattern.push_str("\\_"),
+                '\\' => pattern.push_str("\\\\"),
+                c => pattern.push(c),
+            }
+        } else if c == '\\' {
+            escaped = true;
+        } else {
+            match c {
+                '*' => pattern.push('%'),
+                '%' => pattern.push_str("\\%"),
+                '_' => pattern.push_str("\\_"),
+                c => pattern.push(c),
+            }
+        }
+    }
+    if escaped {
+        // Trailing `\` is a literal backslash.
+        pattern.push_str("\\\\");
+    }
+    pattern.to_lowercase()
 }
 
 /// Parses time-based `condition`.
@@ -131,23 +169,34 @@ impl<'a, P: Pattern> Iterator for SplitUnescaped<'a, P> {
         }
         let next = &self.text[self.start..self.end];
 
-        self.start = self.end + 1;
-        if let Some((head, remainder)) = self.text.split_at_checked(self.start) {
-            self.end = next_unescaped_split(remainder, self.pattern).unwrap_or(remainder.len()) + head.len();
-        }
+        // Advance past the separator by its own UTF-8 length. `self.end` is a
+        // char boundary (a separator match or `text.len()`), so this keeps
+        // `self.start` on a char boundary even for multi-byte whitespace such
+        // as NBSP (U+00A0) or U+3000; stepping by one byte would land
+        // mid-codepoint and panic on the next slice.
+        self.start = self.end + self.text[self.end..].chars().next().map_or(0, char::len_utf8);
+
+        let (head, remainder) = self.text.split_at(self.start);
+        self.end = next_unescaped_split(remainder, self.pattern).unwrap_or(remainder.len()) + head.len();
 
         Some(next)
     }
 }
 
 /// Determines if character at `index` in `text` is escaped with `\`.
+///
+/// A character is escaped iff it is preceded by an odd number of consecutive
+/// backslashes, so only the immediately preceding run of backslashes is
+/// examined. Scanning the bytes backwards is safe because `\` (0x5C) never
+/// occurs inside a multi-byte UTF-8 sequence.
 fn is_unescaped(text: &str, index: usize) -> bool {
-    let backslash_count = text
-        .chars()
-        .rev()
-        .skip(text.len() - index)
-        .take_while(|&c| c == '\\')
-        .count();
+    let bytes = text.as_bytes();
+    let mut backslash_count = 0;
+    let mut i = index;
+    while i > 0 && bytes[i - 1] == b'\\' {
+        backslash_count += 1;
+        i -= 1;
+    }
     backslash_count % 2 == 0
 }
 

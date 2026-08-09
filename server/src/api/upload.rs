@@ -1,6 +1,6 @@
 use crate::api::doc::UPLOAD_TAG;
 use crate::api::error::{ApiError, ApiResult};
-use crate::app::AppState;
+use crate::app::{AppState, Context};
 use crate::config::{Action, Config};
 use crate::content::upload::{PartName, UploadToken};
 use crate::content::{download, upload};
@@ -45,8 +45,11 @@ struct UploadResponse {
     token: UploadToken,
 }
 
-async fn upload_from_url(config: &Config, body: UploadBody) -> ApiResult<Json<UploadResponse>> {
-    let token = download::from_url(config, body.content_url).await?;
+async fn upload_from_url(ctx: &Context, body: UploadBody) -> ApiResult<Json<UploadResponse>> {
+    // URL downloads require the downloader power; the multipart file-upload
+    // path stays gated by Action::UploadCreate only.
+    ctx.verify_privilege(Action::UploadUseDownloader)?;
+    let token = download::from_url(&ctx.config, body.content_url).await?;
     Ok(Json(UploadResponse { token }))
 }
 
@@ -74,14 +77,14 @@ async fn upload(ctx: Ctx, body: JsonOrMultipart<UploadBody>) -> ApiResult<Json<U
     ctx.verify_privilege(Action::UploadCreate)?;
 
     match body {
-        JsonOrMultipart::Json(payload) => upload_from_url(&ctx.config, payload).await,
+        JsonOrMultipart::Json(payload) => upload_from_url(&ctx, payload).await,
         JsonOrMultipart::Multipart(payload) => {
             let decoded_body = upload::extract(&ctx.config, payload, [PartName::Content]).await?;
             if let [Some(token)] = decoded_body.files {
                 Ok(Json(UploadResponse { token }))
             } else if let Some(metadata) = decoded_body.metadata {
                 let url_upload: UploadBody = serde_json::from_slice(&metadata)?;
-                upload_from_url(&ctx.config, url_upload).await
+                upload_from_url(&ctx, url_upload).await
             } else {
                 Err(ApiError::MissingFormData)
             }

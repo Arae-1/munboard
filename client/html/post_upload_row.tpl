@@ -2,14 +2,14 @@
     <div class='thumbnail-wrapper'>
         <% if (['image'].includes(ctx.uploadable.type)) { %>
 
-            <a href='<%= ctx.uploadable.previewUrl %>'>
+            <a href='<%- ctx.uploadable.previewUrl %>'>
                 <%= ctx.makeThumbnail(ctx.uploadable.previewUrl) %>
             </a>
 
         <% } else if (['video'].includes(ctx.uploadable.type)) { %>
 
             <div class='thumbnail'>
-                <a href='<%= ctx.uploadable.previewUrl %>'>
+                <a href='<%- ctx.uploadable.previewUrl %>'>
                     <video id='video' nocontrols muted>
                         <source type='<%- ctx.uploadable.mimeType %>' src='<%- ctx.uploadable.previewUrl %>'/>
                     </video>
@@ -37,7 +37,7 @@
                 </ul>
             </nav>
 
-            <span class='filename'><%= ctx.uploadable.name %></span>
+            <span class='filename'><%- ctx.uploadable.name %></span>
         </header>
 
         <div class='body'>

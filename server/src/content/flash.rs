@@ -19,9 +19,9 @@
 // Code borrowed from Ruffle (https://github.com/ruffle-rs/ruffle/blob/master/render/src/utils.rs).
 
 use flate2::bufread::ZlibDecoder;
-use image::{DynamicImage, ImageFormat, RgbaImage};
+use image::{DynamicImage, ImageFormat, ImageReader, Limits, RgbaImage};
 use std::borrow::Cow;
-use std::io::Read;
+use std::io::{Cursor, Read};
 use swf::Color;
 use tracing::{error, warn};
 
@@ -38,6 +38,22 @@ pub enum Error {
     #[error("Unsupported DefineBitsLossless{0} format {1:?}")]
     UnsupportedLosslessFormat(u8, swf::BitmapFormat),
 }
+
+/// Maximum width/height (in pixels) of images embedded in SWF tags.
+/// Larger images are rejected before the decoder allocates any buffers.
+const MAX_EMBEDDED_IMAGE_DIMENSION: u32 = 16384; // 16K
+
+/// Maximum number of bytes image decoders may allocate for images embedded in
+/// SWF tags, preventing multi-GB allocations from embedded image bombs.
+const MAX_EMBEDDED_IMAGE_ALLOCATION: u64 = 0x1000_0000; // 256 MiB
+
+/// Maximum area (in pixels) of a DefineBitsLossless bitmap. The worst-case
+/// RGBA output is `MAX_BITMAP_AREA * 4` bytes, which keeps the per-tag memory
+/// (decompressed payload plus output) at or below 256 MiB.
+const MAX_BITMAP_AREA: usize = 0x0200_0000; // 32M pixels => 128 MiB RGBA
+
+/// Maximum number of bytes decompressed from a single zlib payload.
+const MAX_DECOMPRESSED_SIZE: u64 = 0x0800_0000; // 128 MiB
 
 /// The format of image data in a DefineBitsJpeg2/3 tag.
 /// Generally this will be JPEG, but according to SWF19, these tags can also contain PNG and GIF data.
@@ -71,10 +87,29 @@ pub fn decode_define_bits_jpeg(data: &[u8], alpha_data: Option<&[u8]>) -> Result
     }
     match format {
         JpegTagFormat::Jpeg => decode_jpeg(data, alpha_data),
-        JpegTagFormat::Png => image::load_from_memory_with_format(data, ImageFormat::Png).map_err(Error::from),
-        JpegTagFormat::Gif => image::load_from_memory_with_format(data, ImageFormat::Gif).map_err(Error::from),
+        JpegTagFormat::Png => decode_embedded_image(data, ImageFormat::Png),
+        JpegTagFormat::Gif => decode_embedded_image(data, ImageFormat::Gif),
         JpegTagFormat::Unknown => Err(Error::UnknownType),
     }
+}
+
+/// Decodes image data embedded in an SWF tag with the same size limits applied
+/// to regular image uploads, so an embedded PNG/GIF bomb cannot force a
+/// multi-GB allocation.
+pub(crate) fn decode_embedded_image(data: &[u8], format: ImageFormat) -> Result<DynamicImage, Error> {
+    let mut reader = ImageReader::new(Cursor::new(data));
+    reader.set_format(format);
+    reader.limits(embedded_image_limits());
+    reader.decode().map_err(Error::from)
+}
+
+/// Returns the decode limits applied to images embedded in SWF tags.
+fn embedded_image_limits() -> Limits {
+    let mut limits = Limits::no_limits();
+    limits.max_image_width = Some(MAX_EMBEDDED_IMAGE_DIMENSION);
+    limits.max_image_height = Some(MAX_EMBEDDED_IMAGE_DIMENSION);
+    limits.max_alloc = Some(MAX_EMBEDDED_IMAGE_ALLOCATION);
+    limits
 }
 
 /// Glues the JPEG encoding tables from a `JPEGTables` SWF tag to the JPEG data
@@ -174,12 +209,10 @@ pub fn remove_invalid_jpeg_data(data: &'_ [u8]) -> Cow<'_, [u8]> {
 }
 
 /// Some SWFs report unreasonable bitmap dimensions (#1191).
-/// Fail before decoding such bitmaps to avoid panics.
+/// Fail before decoding such bitmaps to avoid panics and oversized allocations.
 fn validate_size(width: u16, height: u16) -> Result<(), Error> {
-    const INVALID_SIZE: usize = 0x0800_0000; // 128MB
-
     let size = (width as usize).saturating_mul(height as usize);
-    if size >= INVALID_SIZE {
+    if size >= MAX_BITMAP_AREA {
         return Err(Error::TooLarge);
     }
     Ok(())
@@ -189,7 +222,7 @@ fn validate_size(width: u16, height: u16) -> Result<(), Error> {
 /// The decoded bitmap will have pre-multiplied alpha.
 fn decode_jpeg(jpeg_data: &[u8], alpha_data: Option<&[u8]>) -> Result<DynamicImage, Error> {
     let jpeg_data = remove_invalid_jpeg_data(jpeg_data);
-    let jpeg = image::load_from_memory_with_format(&jpeg_data, ImageFormat::Jpeg)?;
+    let jpeg = decode_embedded_image(&jpeg_data, ImageFormat::Jpeg)?;
 
     // Decompress the alpha data (DEFLATE compression).
     if let Some(alpha_data) = alpha_data {
@@ -228,15 +261,24 @@ fn decode_jpeg(jpeg_data: &[u8], alpha_data: Option<&[u8]>) -> Result<DynamicIma
 /// `DefineBitsLossless` is Zlib encoded pixel data (similar to PNG), possibly
 /// palletized.
 pub fn decode_define_bits_lossless(swf_tag: &swf::DefineBitsLossless) -> Result<Option<DynamicImage>, Error> {
+    // Reject bitmaps whose dimensions would exceed the memory budget before
+    // decompressing anything, so oversized tags are never decompressed.
+    validate_size(swf_tag.width, swf_tag.height)?;
+    let has_alpha = swf_tag.version == 2;
+
     // Decompress the image data (DEFLATE compression).
     let mut decoded_data = decompress_zlib(&swf_tag.data)?;
-    let has_alpha = swf_tag.version == 2;
 
     // Swizzle/de-palettize the bitmap.
     let out_data = match (swf_tag.version, swf_tag.format) {
         (1, swf::BitmapFormat::Rgb15) => {
             let padded_width = (swf_tag.width + 0b1) & !0b1;
-            validate_size(swf_tag.width, swf_tag.height)?;
+            // The payload must hold the full padded bitmap; reject truncated
+            // payloads instead of indexing out of bounds below.
+            let expected_len = padded_width as usize * swf_tag.height as usize * 2;
+            if decoded_data.len() < expected_len {
+                return Err(Error::InvalidZlibCompression);
+            }
             let mut out_data = Vec::with_capacity(swf_tag.width as usize * swf_tag.height as usize * 4);
             let mut i = 0;
             for _ in 0..swf_tag.height {
@@ -254,7 +296,6 @@ pub fn decode_define_bits_lossless(swf_tag: &swf::DefineBitsLossless) -> Result<
             out_data
         }
         (1 | 2, swf::BitmapFormat::Rgb32) => {
-            validate_size(swf_tag.width, swf_tag.height)?;
             for rgba in decoded_data.chunks_exact_mut(4) {
                 rgba.rotate_left(1);
                 if !has_alpha {
@@ -266,6 +307,12 @@ pub fn decode_define_bits_lossless(swf_tag: &swf::DefineBitsLossless) -> Result<
         (1 | 2, swf::BitmapFormat::ColorMap8 { num_colors }) => {
             let mut i = 0;
             let padded_width = (swf_tag.width + 0b11) & !0b11;
+            // The payload must hold the palette plus the full padded bitmap;
+            // reject truncated payloads instead of indexing out of bounds below.
+            let palette_len = (num_colors as usize + 1) * if has_alpha { 4 } else { 3 };
+            if decoded_data.len() < palette_len + padded_width as usize * swf_tag.height as usize {
+                return Err(Error::InvalidZlibCompression);
+            }
 
             let mut palette = Vec::with_capacity(num_colors as usize + 1);
             for _ in 0..=num_colors {
@@ -279,7 +326,6 @@ pub fn decode_define_bits_lossless(swf_tag: &swf::DefineBitsLossless) -> Result<
                 i += if has_alpha { 4 } else { 3 };
             }
 
-            validate_size(swf_tag.width, swf_tag.height)?;
             let mut out_data = Vec::with_capacity(swf_tag.width as usize * swf_tag.height as usize * 4);
             for _ in 0..swf_tag.height {
                 for _ in 0..swf_tag.width {
@@ -302,8 +348,6 @@ pub fn decode_define_bits_lossless(swf_tag: &swf::DefineBitsLossless) -> Result<
 
     Ok(RgbaImage::from_vec(u32::from(swf_tag.width), u32::from(swf_tag.height), out_data).map(DynamicImage::from))
 }
-
-const MAX_DECOMPRESSED_SIZE: u64 = 0x0800_0000; // 128MB
 
 /// Decodes zlib-compressed data.
 fn decompress_zlib(data: &[u8]) -> Result<Vec<u8>, Error> {

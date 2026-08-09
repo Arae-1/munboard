@@ -161,12 +161,15 @@ async fn create(
                     )
                     .execute(conn)?;
 
+                // Tokens created without an explicit expiration time get a sane
+                // default lifetime instead of never expiring.
+                let default_expiration = || DateTime::from(time::OffsetDateTime::now_utc() + time::Duration::days(30));
                 let user_token = NewUserToken {
                     id: Uuid::new_v4(),
                     user_id,
                     note: body.note.as_deref().map(str::trim),
                     enabled: body.enabled.unwrap_or(true),
-                    expiration_time: body.expiration_time,
+                    expiration_time: Some(body.expiration_time.unwrap_or_else(default_expiration)),
                 }
                 .insert_into(user_token::table)
                 .get_result(conn)?;
@@ -529,10 +532,11 @@ mod test {
             .first(&mut conn)?;
         assert_eq!(snapshot.operation, ResourceOperation::Created);
         assert_eq!(snapshot.resource_type, ResourceType::UserToken);
-        assert_eq!(
-            snapshot.data,
-            json!({"note": "wh test", "enabled": true, "expiration_time": null})
-        );
+        assert_eq!(snapshot.data["note"], json!("wh test"));
+        assert_eq!(snapshot.data["enabled"], json!(true));
+        // Tokens created without an explicit expiration time get a default
+        // lifetime, so the snapshot records an RFC 3339 timestamp instead of null.
+        assert!(snapshot.data["expiration_time"].is_string());
 
         let token: Uuid = user_token::table
             .select(user_token::id)
