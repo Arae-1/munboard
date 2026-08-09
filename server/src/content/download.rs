@@ -14,17 +14,17 @@ use url::Url;
 
 fn is_private_ipv4(ip: &Ipv4Addr) -> bool {
     let octets = ip.octets();
-    match (octets[0], octets[1]) {
-        (0, _) => true,             // 0.0.0.0/8, including the unspecified/broadcast address
-        (10, _) => true,            // 10.0.0.0/8
-        (127, _) => true,           // 127.0.0.0/8 loopback
-        (169, 254) => true,         // 169.254.0.0/16 link-local
-        (172, 16..=31) => true,     // 172.16.0.0/12
-        (192, 168) => true,         // 192.168.0.0/16
-        (100, 64..=127) => true,    // 100.64.0.0/10 CGNAT
-        (192, 0) => true,           // 192.0.0.0/24
-        (198, 18..=19) => true,     // 198.18.0.0/15 benchmarking
-        (224..=239, _) => true,     // 224.0.0.0/4 multicast
+    match (octets[0], octets[1], octets[2]) {
+        (0, _, _) => true,          // 0.0.0.0/8, including the unspecified/broadcast address
+        (10, _, _) => true,         // 10.0.0.0/8
+        (127, _, _) => true,        // 127.0.0.0/8 loopback
+        (169, 254, _) => true,      // 169.254.0.0/16 link-local
+        (172, 16..=31, _) => true,  // 172.16.0.0/12
+        (192, 168, _) => true,      // 192.168.0.0/16
+        (100, 64..=127, _) => true, // 100.64.0.0/10 CGNAT
+        (192, 0, 0) => true,        // 192.0.0.0/24
+        (198, 18..=19, _) => true,  // 198.18.0.0/15 benchmarking
+        (224..=239, _, _) => true,  // 224.0.0.0/4 multicast
         _ => false,
     }
 }

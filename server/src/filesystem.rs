@@ -70,7 +70,18 @@ where
         file.write_all(&chunk).await?;
     }
 
-    verify_magic_bytes(&upload_path, mime_type)?;
+    // Make the written data durable and visible to other processes before
+    // reopening the file for verification, so the subsequent open cannot
+    // observe stale or empty data on network/overlay filesystems.
+    file.flush().await?;
+    file.sync_all().await?;
+
+    if let Err(err) = verify_magic_bytes(&upload_path, mime_type) {
+        warn!(
+            "Upload magic bytes verification failed: {total_bytes} bytes written to {upload_path:?} for mime type {mime_type}: {err}"
+        );
+        return Err(err);
+    }
 
     Ok(upload_token)
 }

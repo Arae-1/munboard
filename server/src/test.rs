@@ -39,7 +39,7 @@ use diesel::{ExpressionMethods, Insertable, JoinOnDsl, PgConnection, QueryDsl, Q
 use serde_json::Value;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use tower::layer::Layer;
 use tower_http::normalize_path::NormalizePathLayer;
 use uuid::Uuid;
@@ -56,6 +56,7 @@ pub fn get_connection() -> Result<Connection, PoolError> {
 }
 
 pub fn get_state() -> AppState {
+    disable_version_check();
     let mut guard = get_state_guard();
     if let Some(state) = guard.as_mut() {
         state.clone()
@@ -64,6 +65,24 @@ pub fn get_state() -> AppState {
         *guard = Some(state.clone());
         state
     }
+}
+
+/// Disables the concurrent-edit (version) check for the whole test run.
+///
+/// The check is controlled at runtime by the `OXIBOORU_DISABLE_VERSION_CHECK` environment
+/// variable (see [`crate::api::DISABLE_VERSION_CHECK_ENV`]). Every test builds its app
+/// state through [`get_state`], so this single call guarantees the variable is set before
+/// any handler can run, and `LazyLock` keeps it idempotent.
+fn disable_version_check() {
+    static DISABLED: LazyLock<()> = LazyLock::new(|| {
+        // SAFETY: Runs at most once, from the first `get_state()` call, before any test
+        // handler can execute (handlers require app state built by this function), so no
+        // other thread can observe a partially initialized environment.
+        unsafe {
+            std::env::set_var(crate::api::DISABLE_VERSION_CHECK_ENV, "1");
+        }
+    });
+    LazyLock::force(&DISABLED);
 }
 
 /// Resets the test database. Useful after operations that are hard to reverse perfectly, like merging.

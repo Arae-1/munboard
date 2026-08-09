@@ -344,6 +344,10 @@ async fn update_impl(
     params: ResourceParams<Field>,
     body: UserUpdateBody,
 ) -> ApiResult<Json<UserInfo>> {
+    // URL downloads additionally require the downloader power, while
+    // token-based avatars are gated only by the avatar privilege. Capture
+    // the flag before Content::new consumes body.avatar_url.
+    let avatar_from_url = body.avatar_url.is_some();
     let custom_avatar = match Content::new(body.avatar_token, body.avatar_url) {
         Some(content) => {
             // Verify avatar edit privileges before any avatar download, so
@@ -367,6 +371,12 @@ async fn update_impl(
                 Action::UserEditAnyAvatar
             };
             ctx.verify_privilege(action)?;
+
+            // URL fetches need the downloader power in addition to the avatar
+            // privilege; token-based avatars only need the avatar privilege.
+            if avatar_from_url {
+                ctx.verify_privilege(Action::UploadUseDownloader)?;
+            }
 
             Some(content.thumbnail(&ctx.config, ThumbnailType::Avatar).await?)
         }

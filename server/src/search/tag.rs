@@ -122,7 +122,7 @@ impl<'a> Builder<'a> for QueryBuilder<'a> {
 
 impl<'a> QueryBuilder<'a> {
     pub fn new(ctx: &'a Context, search_criteria: &'a str) -> ApiResult<Self> {
-        let mut search = SearchCriteria::new(ctx, search_criteria, Token::Name).map_err(Box::from)?;
+        let mut search = SearchCriteria::new(ctx, search_criteria, Token::Name)?;
         if ctx.client.rank == UserRank::Anonymous {
             let preferences = &ctx.config.anonymous_preferences;
 

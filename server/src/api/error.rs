@@ -112,6 +112,8 @@ pub enum ApiError {
     Password(#[from] argon2::password_hash::Error),
     PathRejection(#[from] axum::extract::rejection::PathRejection),
     QueryRejection(#[from] axum::extract::rejection::QueryRejection),
+    #[error("Search query exceeds maximum length of {0}")]
+    QueryTooLong(ByteSize),
     Request(#[from] reqwest::Error),
     #[error("Someone else modified this in the meantime. Please try again.")]
     ResourceModified,
@@ -143,7 +145,8 @@ impl ApiError {
             | Self::MissingContent(_)
             | Self::MissingContentType
             | Self::MissingFormData
-            | Self::MissingMetadata => StatusCode::BAD_REQUEST,
+            | Self::MissingMetadata
+            | Self::QueryTooLong(_) => StatusCode::BAD_REQUEST,
             Self::NotLoggedIn | Self::Password(_) | Self::UnauthorizedPasswordReset => StatusCode::UNAUTHORIZED,
             Self::Hidden(_) | Self::InsufficientPrivileges => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
@@ -238,6 +241,7 @@ impl ApiError {
             Self::Password(_) => "Password Error",
             Self::PathRejection(_) => "Path Rejection",
             Self::QueryRejection(_) => "Query Rejection",
+            Self::QueryTooLong(_) => "Query Too Long",
             Self::Request(_) => "Request Error",
             Self::ResourceModified => "Resource Modified",
             Self::SelfMerge(_) => "Self Merge",

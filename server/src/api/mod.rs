@@ -184,11 +184,19 @@ fn verify_privilege(client: Client, required_rank: UserRank) -> ApiResult<()> {
         .ok_or(ApiError::InsufficientPrivileges)
 }
 
+/// Environment variable that disables the concurrent-edit (version) check.
+///
+/// The check is enabled by default. Setting this variable to any value (e.g.
+/// `OXIBOORU_DISABLE_VERSION_CHECK=1`) disables it at runtime. This is intended for
+/// automated tests and one-off maintenance scripts that deliberately operate on stale
+/// versions.
+pub(crate) const DISABLE_VERSION_CHECK_ENV: &str = "OXIBOORU_DISABLE_VERSION_CHECK";
+
 /// Checks if `current_version` matches `client_version`.
 /// Returns error if they do not match.
 fn verify_version(current_version: DateTime, client_version: DateTime) -> ApiResult<()> {
-    // Check disabled in test builds
-    if cfg!(test) {
+    // Disabled at runtime when `OXIBOORU_DISABLE_VERSION_CHECK` is set
+    if std::env::var_os(DISABLE_VERSION_CHECK_ENV).is_some() {
         return Ok(());
     }
 

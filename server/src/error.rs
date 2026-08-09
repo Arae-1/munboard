@@ -147,6 +147,8 @@ pub enum ErrorName {
     PostNotFound,
     PostRelationAlreadyExists,
     QueryBuilderError,
+    /// The search query string exceeds the maximum allowed length.
+    QueryTooLong,
     QuotaExceeded,
     ReadOnlyFilesystem,
     ReadOnlyTransaction,
@@ -668,6 +670,7 @@ impl ErrorKind for crate::api::error::ApiError {
             Self::Password(err) => err.kind(),
             Self::PathRejection(err) => err.kind(),
             Self::QueryRejection(err) => err.kind(),
+            Self::QueryTooLong(_) => ErrorName::QueryTooLong,
             Self::Request(_) => ErrorName::RequestError,
             Self::ResourceModified => ErrorName::ResourceModified,
             Self::SelfMerge(_) => ErrorName::SelfMerge,

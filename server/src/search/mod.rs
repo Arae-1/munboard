@@ -1,4 +1,4 @@
-use crate::api::error::{ApiError, ApiResult};
+use crate::api::error::{ApiError, ApiResult, ByteSize};
 use crate::app::Context;
 use crate::auth::Client;
 use argon2::password_hash::rand_core::{OsRng, RngCore};
@@ -70,6 +70,15 @@ pub enum TimeParsingError {
     OutOfRange(#[from] time::error::ComponentRange),
 }
 
+/// Maximum length of a search query string, in bytes.
+///
+/// 4096 bytes allows queries with hundreds of space-separated terms while
+/// bounding the cost of token splitting and the size of the generated
+/// temporary filter tables. Measured in bytes (`.len()`) rather than
+/// characters because the limit exists to cap parsing cost and memory, which
+/// scale with the encoded size, and byte length is a constant-time check.
+const MAX_QUERY_LEN: usize = 4096;
+
 /// Stores filters, sorts, offset, and limit of a search query.
 /// Filters will be parsed later.
 pub struct SearchCriteria<'a, T> {
@@ -99,6 +108,12 @@ where
     /// (filters or sorts) separated by unescaped whitespace. If a term does not contain an unescaped `:`,
     /// then it will be interpreted as an `anonymous_token`.
     fn new(ctx: &'a Context, search_criteria: &'a str, anonymous_token: T) -> ApiResult<Self> {
+        // Reject oversized queries before any parsing work so pathological input
+        // fails fast with a clean 400 instead of driving the splitting logic.
+        if search_criteria.len() > MAX_QUERY_LEN {
+            return Err(ApiError::QueryTooLong(ByteSize(MAX_QUERY_LEN)));
+        }
+
         let mut filters: Vec<UnparsedFilter<T>> = Vec::new();
         let mut sorts: Vec<ParsedSort<T>> = Vec::new();
         let mut random_sort = false;

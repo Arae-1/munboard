@@ -103,7 +103,8 @@ custom_field_name_regex = "^[^\\s%+#/<>\"'&=]{1,64}$"
 custom_field_default_color = "#888888"
 
 # Set auth cookie's `secure` flag (only send over HTTPS)
-secure_cookie = false
+# Safe default: the site is served over TLS, and the deployed config already runs with this enabled.
+secure_cookie = true
 
 [public_info.privileges]
 user_create_self           = "anonymous" # Registration permission

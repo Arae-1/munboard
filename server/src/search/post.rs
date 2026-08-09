@@ -248,7 +248,7 @@ impl<'a> QueryBuilder<'a> {
         search_criteria: &'a str,
         anonymous_token: Token,
     ) -> ApiResult<Self> {
-        let search = SearchCriteria::new(ctx, search_criteria, anonymous_token).map_err(Box::from)?;
+        let search = SearchCriteria::new(ctx, search_criteria, anonymous_token)?;
         for sort in &search.sorts {
             if matches!(
                 sort.kind,
@@ -606,7 +606,7 @@ pub fn filter_table() -> TokenTable<&'static str> {
         _comment_time: "-2020",
         _fav_time: "-2020..2021",
         _feature_time: "-2020..2022",
-        _custom_field: "",
+        _custom_field: "foo=5",
         _special: "fav",
     }
 }

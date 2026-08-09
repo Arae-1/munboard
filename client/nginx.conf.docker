@@ -65,8 +65,16 @@ http {
         add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
         add_header Strict-Transport-Security $hsts_header always;
 
-        # Add Swagger UI proxying
+        # Swagger UI / API docs proxying. Private by default: the API surface
+        # must not be public. Operators behind a VPN or private network can
+        # relax these allow/deny rules if needed.
         location ~ ^/(docs|apidoc) {
+            allow 127.0.0.1;
+            allow 10.0.0.0/8;
+            allow 172.16.0.0/12;
+            allow 192.168.0.0/16;
+            deny all;
+
             proxy_pass http://backend;
         }
 
@@ -115,6 +123,13 @@ http {
         }
 
         location /data/ {
+            # Temporary upload staging files are internal only and must never
+            # be publicly servable. More specific than /data/, so this wins
+            # for every request under /data/temporary-uploads/.
+            location /data/temporary-uploads/ {
+                return 403;
+            }
+
             # Legacy redirect for old flat post URLs
             location ~ ^/data/posts/[^/]+$ {
                 rewrite ^/data/posts/(.+)$ /legacy/redirect/$1 break;

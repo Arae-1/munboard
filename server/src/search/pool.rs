@@ -103,7 +103,7 @@ impl<'a> Builder<'a> for QueryBuilder<'a> {
 
 impl<'a> QueryBuilder<'a> {
     pub fn new(ctx: &'a Context, search_criteria: &'a str) -> ApiResult<Self> {
-        let search = SearchCriteria::new(ctx, search_criteria, Token::Name).map_err(Box::from)?;
+        let search = SearchCriteria::new(ctx, search_criteria, Token::Name)?;
         Ok(Self {
             search,
             cache_state: CacheState::new(),
