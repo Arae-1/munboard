@@ -1,0 +1,7 @@
+{
+  "limit": 40,
+  "offset": 0,
+  "query": "custom-field:foo=5 -sort:id",
+  "results": [],
+  "total": 0
+}
