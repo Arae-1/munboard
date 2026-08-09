@@ -632,8 +632,11 @@ async fn delete(
             };
             ctx.verify_privilege(action)?;
 
-            diesel::delete(user::table.find(user.id)).execute(conn)?;
+            // Record the deletion snapshot before removing the user row: on
+            // self-delete the actor IS the deleted user, so inserting the
+            // snapshot afterwards would violate the snapshot.user_id FK.
             snapshot::user::deletion_snapshot(conn, ctx.client, &user)?;
+            diesel::delete(user::table.find(user.id)).execute(conn)?;
             Ok::<_, ApiError>(Json(()))
         })
         .await
@@ -907,6 +910,55 @@ mod test {
         assert_eq!(snapshot.operation, ResourceOperation::Deleted);
         assert_eq!(snapshot.resource_type, ResourceType::User);
         assert_eq!(snapshot.resource_id, name.clone().into());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn delete_self() -> ApiResult<()> {
+        let app_state = get_state();
+        let (router, _) = api::routes(app_state).split_for_parts();
+        let app = NormalizePathLayer::trim_trailing_slash().layer(router);
+        let server = TestServer::new(ServiceExt::<Request>::into_make_service(app))
+            .expect("Test server must be constructible");
+
+        // Create a user that will delete its own account
+        let body = json!({"name": "doomed_user", "password": "test_password", "rank": "regular"});
+        let response = server.post("/users").json(&body).await;
+        assert_eq!(response.status_code(), 200);
+
+        let mut conn = get_connection()?;
+        let dt: DateTime = user::table
+            .select(user::last_edit_time)
+            .filter(user::name.eq("doomed_user"))
+            .first(&mut conn)?;
+
+        // Self-delete: the actor IS the deleted user, so the deletion snapshot
+        // must be recorded before the row is removed (regression: inserting
+        // the snapshot after the delete violated snapshot_user_id_fkey).
+        let auth = header::basic_credentials_for("doomed_user", TEST_PASSWORD);
+        let response = server
+            .delete("/user/doomed_user")
+            .add_header(AUTHORIZATION, &auth)
+            .json(&json!({"version": dt}))
+            .await;
+        assert_eq!(response.status_code(), 200);
+
+        // User row is gone
+        let user_exists: bool = diesel::select(diesel::dsl::exists(user::table.filter(user::name.eq("doomed_user"))))
+            .first(&mut conn)?;
+        assert!(!user_exists);
+
+        // Deletion snapshot exists; its user_id was nulled by the cascade
+        let snapshot: Snapshot = snapshot::table
+            .select(Snapshot::as_select())
+            .filter(snapshot::resource_id.eq("doomed_user"))
+            .order(snapshot::id.desc())
+            .first(&mut conn)?;
+        assert_eq!(snapshot.operation, ResourceOperation::Deleted);
+        assert_eq!(snapshot.resource_type, ResourceType::User);
+        assert_eq!(snapshot.user_id, None);
 
         Ok(())
     }
