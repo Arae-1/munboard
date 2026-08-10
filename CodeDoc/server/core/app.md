@@ -93,11 +93,14 @@ Performs all startup initialization:
 
 Starts the HTTP server:
 
-1. Creates the router via `api::routes(state)`.
-2. Wraps the router with `NormalizePathLayer::trim_trailing_slash()` to strip trailing slashes from URLs.
+1. Creates the API router via `api::routes(state.clone())` and splits off the OpenAPI spec with `split_for_parts()`.
+2. Wraps the API router with `NormalizePathLayer::trim_trailing_slash()` to strip trailing slashes from URLs. This normalized router becomes the fallback service.
 3. Merges Swagger UI at `/docs` with the API documentation at `/apidoc/openapi.json`.
-4. Binds a TCP listener on `0.0.0.0:{port}` where `port` comes from `config::port()`.
-5. Serves with graceful shutdown via `shutdown_signal()`.
+4. Merges `embed::routes(state)` into the router. This serves the OpenGraph embed pages at `/embed/post/{id}` (see [content/embed.md](../content/embed.md)).
+5. Binds a TCP listener on `0.0.0.0:{port}` where `port` comes from `config::port()`.
+6. Serves with graceful shutdown via `shutdown_signal()`.
+
+The embed router is merged before the fallback service, so `NormalizePathLayer` does not apply to it.
 
 ## Function: `shutdown_signal()`
 

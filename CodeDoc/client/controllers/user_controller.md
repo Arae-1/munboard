@@ -72,7 +72,6 @@ The `infix` is `"self"` when the logged-in user views their own profile, and `"a
 - `user_token_list_{infix}`
 - `user_token_create_{infix}`
 - `user_token_edit_{infix}`
-- `user_token_delete_{infix}`
 - `user_delete_{infix}`
 
 ### Rank Map Construction
@@ -98,7 +97,6 @@ The controller builds a map of available ranks:
 | `canListTokens` | `user_token_list_{infix}` |
 | `canCreateToken` | `user_token_create_{infix}` |
 | `canEditToken` | `user_token_edit_{infix}` |
-| `canDeleteToken` | `user_token_delete_{infix}` |
 | `canDelete` | `user_delete_{infix}` |
 | `ranks` | Rank map (filtered) |
 | `tokens` | User tokens array |
@@ -222,14 +220,15 @@ This queuing mechanism handles messages sent before the view is ready (e.g., fro
 - On error: shows the error message and enables the form.
 
 ### `_evtUpdateToken(e)`
-**Trigger:** User edits a token's note.
-**Parameters:** `e.detail.user`, `e.detail.userToken`, `e.detail.note`
+**Trigger:** User edits a token's note or toggles the token's enabled state.
+**Parameters:** `e.detail.user`, `e.detail.userToken`, `e.detail.note`, `e.detail.enabled`
 
 **Code path:**
 1. Clears all messages.
 2. Disables the form.
 3. If `e.detail.note` is not `undefined`/`null`, sets `e.detail.userToken.note = e.detail.note`.
-4. Calls `e.detail.userToken.save(e.detail.user.name)`.
+4. If `e.detail.enabled` is not `undefined`/`null`, sets `e.detail.userToken.enabled = e.detail.enabled`.
+5. Calls `e.detail.userToken.save(e.detail.user.name)`.
 
 **Success path:**
 - Routes to the token list page.
@@ -254,7 +253,7 @@ This queuing mechanism handles messages sent before the view is ready (e.g., fro
 | `api.logout()` | Ends the session |
 | `UserToken.create(userName, note, expirationTime)` | Creates a new authentication token |
 | `userToken.delete(userName)` | Deletes an authentication token |
-| `userToken.save(userName)` | Updates a token's note |
+| `userToken.save(userName)` | Updates a token's note or enabled state |
 | `api.isCurrentAuthToken(token)` | Checks if a token is the one currently in use |
 
 ---

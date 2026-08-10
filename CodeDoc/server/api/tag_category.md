@@ -22,7 +22,9 @@ This file provides HTTP API handlers for tag category resources. Tag categories 
 | `crate::time::DateTime` | Date-time |
 | `crate::{api, snapshot}` | API helpers and snapshots |
 | `diesel` | Database query builder |
+| `regex::Regex` | Regular expression matching |
 | `serde::Deserialize` | Deserialization |
+| `std::sync::LazyLock` | Lazy static initialization |
 | `utoipa::ToSchema` | OpenAPI schema |
 | `utoipa_axum` | OpenAPI router |
 
@@ -151,7 +153,7 @@ async fn create(Ctx(ctx, connection_pool): Ctx, Query(params): Query<ResourcePar
 |-------|------|----------|-------------|
 | `order` | `i32` | Yes | Display order for the category |
 | `name` | `SmallString` | Yes | Category name. Must match `tag_category_name_regex`. |
-| `color` | `SmallString` | Yes | Category color |
+| `color` | `SmallString` | Yes | Category color. Must match `^#[0-9a-fA-F]{6}$` or be empty. |
 
 ### Request Parameters
 
@@ -167,22 +169,23 @@ async fn create(Ctx(ctx, connection_pool): Ctx, Query(params): Query<ResourcePar
 | 403 | `ErrorResponse` | Insufficient privileges |
 | 409 | `ErrorResponse` | Name already exists |
 | 422 | `ErrorResponse` | Name is invalid or missing |
-| 422 | `ErrorResponse` | Color is invalid or missing |
+| 422 | `ErrorResponse` | Color is invalid (a non-empty color does not match the hex regex) |
 
 ### Handler Logic Step by Step
 
 1. Verify the authenticated user has `Action::TagCategoryCreate` privilege.
 2. Verify the `name` matches `RegexType::TagCategory` from the server configuration.
-3. Open a database transaction.
-4. Inside the transaction:
+3. If `body.color` is not empty and does not match `COLOR_HEX_REGEX` (`^#[0-9a-fA-F]{6}$`), return `ApiError::ExpressionFailsRegex` (422). An empty color is allowed.
+4. Open a database transaction.
+5. Inside the transaction:
    a. Insert a new `NewTagCategory` with the provided `order`, `name`, and `color`.
    b. Use `ON CONFLICT (name) DO NOTHING`.
    c. If no row is inserted (name conflict), return `ApiError::AlreadyExists(ResourceProperty::TagCategoryName)`.
    d. Create a creation snapshot via `snapshot::tag_category::creation_snapshot`.
    e. Return the inserted `TagCategory`.
-5. Open a second database transaction.
-6. Convert the new `TagCategory` to `TagCategoryInfo` using `TagCategoryInfo::new`.
-7. Return the response as JSON.
+6. Open a second database transaction.
+7. Convert the new `TagCategory` to `TagCategoryInfo` using `TagCategoryInfo::new`.
+8. Return the response as JSON.
 
 ---
 
@@ -206,7 +209,7 @@ async fn update(Ctx(ctx, connection_pool): Ctx, Path(name): Path<SmallString>, Q
 | `version` | `DateTime` | Yes | Resource version |
 | `order` | `Option<i32>` | No | New display order |
 | `name` | `Option<SmallString>` | No | New category name |
-| `color` | `Option<SmallString>` | No | New category color |
+| `color` | `Option<SmallString>` | No | New category color. Must match `^#[0-9a-fA-F]{6}$` or be empty. |
 
 ### Request Parameters
 
@@ -243,6 +246,7 @@ async fn update(Ctx(ctx, connection_pool): Ctx, Path(name): Path<SmallString>, Q
       - Set `new_category.name`.
    f. If `body.color` is `Some`:
       - Verify `Action::TagCategoryEditColor` privilege.
+      - If the color is not empty and does not match `COLOR_HEX_REGEX`, return `ApiError::ExpressionFailsRegex` (422). An empty color is allowed.
       - Set `new_category.color`.
    g. Update `new_category.last_edit_time` to the current time.
    h. Save changes. Map unique violation to `ApiError::AlreadyExists(ResourceProperty::TagCategoryName)`.
@@ -370,4 +374,4 @@ The test constant `FIELDS` excludes `creation_time` and `last_edit_time`.
 | `update` | serial | Updates "Character" category, verifies changed fields, then restores |
 | `set_default` | serial | Makes "Surroundings" the default, checks `id == 0`, then restores |
 | `preferences` | parallel | Tests anonymous user with tag category blacklist preferences (list and get with `meta` category) |
-| `error` | parallel | Tests nonexistent and invalid operations, name clashes, delete default |
+| `error` | parallel | Tests nonexistent and invalid operations, name clashes, invalid colors, delete default |

@@ -60,7 +60,7 @@ Replaces the complete set of implications for a tag. An implication means: "when
    INSERT INTO tag_implication (parent_id, child_id) VALUES ...
    ```
 
-**Note:** This function only checks for self-reference cycles (tag implies itself). It does NOT check for transitive cycles (A → B → C → A). Transitive cycle detection happens in `get_or_create_tag_ids` with `FetchMode::Acyclic`.
+**Note:** This function only checks for self-reference cycles (tag implies itself). It does NOT check for transitive cycles (A → B → C → A). Transitive cycle detection happens in `get_or_create_tag_ids` with `FetchMode::Acyclic` and in `merge` before any table write.
 
 ---
 
@@ -200,11 +200,11 @@ Ok((tag_ids, primary_tag_names))
 
 ### `merge(conn, absorbed_id, merge_to_id) -> ApiResult<()>`
 
-Merges one tag into another. All data from the absorbed tag transfers to the target tag.
+Merges one tag into another. All data from the absorbed tag transfers to the target tag. Rewriting edges during a merge can close cycles that create/update reject (they build the graph with `FetchMode::Acyclic`), so `merge` detects cycles before any table write.
 
 **Steps:**
 
-1. **Merge implications:**
+1. **Merge implications (prepare):**
    - Fetches all implications involving either tag:
      ```sql
      SELECT * FROM tag_implication
@@ -214,17 +214,32 @@ Merges one tag into another. All data from the absorbed tag transfers to the tar
    - Remaps `absorbed_id` to `merge_to_id` in all fetched implications.
    - Filters out self-implications (`parent_id == child_id`).
    - Uses `HashSet` to deduplicate.
+
+2. **Detect implication cycles (before any table write):**
+   - Creates a `DependencyGraph` seeded with `merge_to_id` and every merged edge. Each merged edge touches `merge_to_id`, so any new cycle through the target tag is reachable.
+   - Builds the initial frontier from the parent and child IDs of all merged implications.
+   - Expands transitively over the live `tag_implication` table, exactly like `get_or_create_tag_ids` does:
+     - Loads all implications whose parent is in the frontier:
+       ```sql
+       SELECT DISTINCT * FROM tag_implication WHERE parent_id IN (<frontier>)
+       ```
+     - Inserts each implication into the graph.
+     - Collects the new children as the next frontier.
+     - Repeats until no new node appears.
+   - If `dependency_graph.has_cycle()` returns true, returns `ApiError::CyclicDependency(ResourceType::TagImplication)` (422). No table is written.
+
+3. **Write merged implications:**
    - Deletes old implications from `merge_to_id`:
      ```sql
      DELETE FROM tag_implication WHERE parent_id = merge_to_id OR child_id = merge_to_id
      ```
-   - Inserts deduplicated, remapped implications.
+   - Inserts the deduplicated, remapped implications.
 
-2. **Merge suggestions:**
+4. **Merge suggestions:**
    - Same pattern as implications but on `tag_suggestion` table.
    - Remaps, deduplicates, deletes old, inserts new.
 
-3. **Merge usages (post tags):**
+5. **Merge usages (post tags):**
    - Finds posts tagged with the absorbed tag but NOT the target:
      ```sql
      SELECT post_id FROM post_tag
@@ -233,7 +248,7 @@ Merges one tag into another. All data from the absorbed tag transfers to the tar
      ```
    - Creates new `PostTag{post_id, tag_id: merge_to_id}` entries for those posts.
 
-4. **Merge names:**
+6. **Merge names:**
    - Gets next order number:
      ```sql
      SELECT MAX(order) + 1 FROM tag_name WHERE tag_id = merge_to_id
@@ -244,12 +259,12 @@ Merges one tag into another. All data from the absorbed tag transfers to the tar
      ```
    - Appends names to target via `add_names(conn, merge_to_id, current_name_count, &removed_names)`.
 
-5. **Delete absorbed tag:**
+7. **Delete absorbed tag:**
    ```sql
    DELETE FROM tag WHERE id = absorbed_id
    ```
 
-6. **Update timestamp:**
+8. **Update timestamp:**
    Calls `last_edit_time(conn, merge_to_id)`.
 
 ---
@@ -386,6 +401,7 @@ Verifies no cycle is detected in this valid DAG.
 
 - `get_or_create_tag_ids` may auto-create tags, insert names, and create snapshots
 - `merge` touches tag_implication, tag_suggestion, post_tag, tag_name, and tag tables
+- `merge` rejects a cyclic merge before any table write and leaves the database untouched
 - All functions operate within a database transaction context
 - No filesystem operations in this module
 - `get_or_create_tag_ids` calls `ctx.verify_privilege(Action::TagCreate)` when creating tags

@@ -22,7 +22,9 @@ This file provides HTTP API handlers for pool category resources. Pool categorie
 | `crate::time::DateTime` | Date-time type |
 | `crate::{api, snapshot}` | API helpers and snapshot functions |
 | `diesel` | Database query builder |
+| `regex::Regex` | Regular expression matching |
 | `serde::Deserialize` | Deserialization |
+| `std::sync::LazyLock` | Lazy static initialization |
 | `utoipa::ToSchema` | OpenAPI schema |
 | `utoipa_axum` | OpenAPI router |
 
@@ -138,7 +140,7 @@ async fn create(Ctx(ctx, connection_pool): Ctx, Query(params): Query<ResourcePar
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | `SmallString` | Yes | Category name. Must match `pool_category_name_regex`. |
-| `color` | `SmallString` | Yes | Category color. |
+| `color` | `SmallString` | Yes | Category color. Must match `^#[0-9a-fA-F]{6}$` or be empty. |
 
 ### Request Parameters
 
@@ -154,22 +156,23 @@ async fn create(Ctx(ctx, connection_pool): Ctx, Query(params): Query<ResourcePar
 | 403 | `ErrorResponse` | Insufficient privileges |
 | 409 | `ErrorResponse` | Name is used by an existing pool category |
 | 422 | `ErrorResponse` | Name is invalid or missing |
-| 422 | `ErrorResponse` | Color is invalid or missing |
+| 422 | `ErrorResponse` | Color is invalid (a non-empty color does not match the hex regex) |
 
 ### Handler Logic Step by Step
 
 1. Verify the authenticated user has `Action::PoolCategoryCreate` privilege.
 2. Verify the `name` matches `RegexType::PoolCategory` from the server configuration.
-3. Open a database transaction.
-4. Inside the transaction:
+3. If `body.color` is not empty and does not match `COLOR_HEX_REGEX` (`^#[0-9a-fA-F]{6}$`), return `ApiError::ExpressionFailsRegex` (422). An empty color is allowed.
+4. Open a database transaction.
+5. Inside the transaction:
    a. Insert a new `NewPoolCategory` with the provided `name` and `color`.
    b. Use `ON CONFLICT (name) DO NOTHING`. Pool category names are case insensitive.
    c. If the row already exists and `do_nothing()` returns no result, return `ApiError::AlreadyExists(ResourceProperty::PoolCategoryName)`.
    d. Create a creation snapshot via `snapshot::pool_category::creation_snapshot`.
    e. Return the inserted `PoolCategory`.
-5. Open a second database transaction.
-6. Convert the new `PoolCategory` to `PoolCategoryInfo` using `PoolCategoryInfo::new`.
-7. Return the response as JSON.
+6. Open a second database transaction.
+7. Convert the new `PoolCategory` to `PoolCategoryInfo` using `PoolCategoryInfo::new`.
+8. Return the response as JSON.
 
 ---
 
@@ -192,7 +195,7 @@ async fn update(Ctx(ctx, connection_pool): Ctx, Path(name): Path<SmallString>, Q
 |-------|------|----------|-------------|
 | `version` | `DateTime` | Yes | Resource version for optimistic locking |
 | `name` | `Option<SmallString>` | No | New category name |
-| `color` | `Option<SmallString>` | No | New category color |
+| `color` | `Option<SmallString>` | No | New category color. Must match `^#[0-9a-fA-F]{6}$` or be empty. |
 
 ### Request Parameters
 
@@ -227,6 +230,7 @@ async fn update(Ctx(ctx, connection_pool): Ctx, Path(name): Path<SmallString>, Q
       - Set `new_category.name` to the new value.
    f. If `body.color` is `Some`:
       - Verify `Action::PoolCategoryEditColor` privilege.
+      - If the color is not empty and does not match `COLOR_HEX_REGEX`, return `ApiError::ExpressionFailsRegex` (422). An empty color is allowed.
       - Set `new_category.color` to the new value.
    g. Update `new_category.last_edit_time` to the current time.
    h. Save changes. If a unique violation occurs, map to `ApiError::AlreadyExists(ResourceProperty::PoolCategoryName)`.
@@ -353,4 +357,4 @@ The module contains integration tests using the `verify_response` helper. The te
 | `create` | serial | Creates a category, verifies count increases by 1, checks usage is 0, then deletes it |
 | `update` | serial | Updates "Style" category, verifies name and color changed, `last_edit_time` increased, then restores |
 | `set_default` | serial | Makes "Setting" the default, verifies `id == 0`, then restores original default |
-| `error` | parallel | Tests nonexistent get, edit, set_default, delete; tests invalid create, name clash, edit invalid, delete default |
+| `error` | parallel | Tests nonexistent get, edit, set_default, delete; tests invalid create, name clash, invalid colors, edit invalid, delete default |

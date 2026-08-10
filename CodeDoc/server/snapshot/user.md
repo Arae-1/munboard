@@ -49,6 +49,8 @@ Called when a user account is deleted.
 
 Same as creation but with `operation` = `ResourceOperation::Deleted`.
 
+The caller (the user delete handler) records the snapshot BEFORE deleting the user row. On self-delete the actor IS the deleted user, so inserting the snapshot afterwards would violate the `snapshot.user_id` foreign key. The foreign key uses `ON DELETE SET NULL`, so after the user row is deleted, the `user_id` of the snapshot becomes `NULL`.
+
 ---
 
 ## Private Functions
@@ -67,7 +69,7 @@ Creates the JSON payload:
 ### `unary_snapshot(conn, client, user, operation)`
 
 Inserts a single `NewSnapshot` with:
-- `user_id` = `client.id`
+- `user_id` = `client.id` (on self-delete the foreign key `ON DELETE SET NULL` makes it `NULL` when the user row is removed)
 - `operation` = the given operation
 - `resource_type` = `ResourceType::User`
 - `resource_id` = `user.name` (uses name, not ID)

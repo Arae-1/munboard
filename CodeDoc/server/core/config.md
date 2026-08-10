@@ -18,6 +18,33 @@ This file defines the server configuration types, deserialization logic, privile
 
 Derives `Debug`, `Display`, `Clone`, `Copy`. Display serializes to lowercase except for `PoolCategory`, `TagCategory`, `CustomField`.
 
+## Enum: `EmbedImage`
+
+| Variant | TOML Value | Purpose |
+|---------|------------|---------|
+| `Post` | `post` | Use the full image for image posts and the thumbnail for other posts |
+| `Thumbnail` | `thumbnail` | Use the thumbnail image |
+| `Logo` | `logo` | Use the logo image |
+| `None` | `none` | Use no image |
+
+Derives `Deserialize`, `Clone`, `Copy`. Serde serializes each variant to its lowercase name.
+
+## Struct: `EmbedConfig`
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `logo_url` | `SmallString` | Logo used as the site icon in embed footers (Discord/Telegram). Path or absolute URL. |
+| `image` | `EmbedImage` | Image used for the card preview |
+| `site_name` | `SmallString` | Text template for the site name |
+| `title` | `SmallString` | Text template for the title |
+| `description` | `SmallString` | Text template for the description |
+| `show_rating` | `bool` | Emit an adult content marker on unsafe posts |
+| `include_post_id_meta` | `bool` | Emit a `<meta name="post-id">` tag |
+
+Deserializes from the `[embed]` section of `config.toml`. Unknown fields are denied (`serde(deny_unknown_fields)`).
+
+Each text template may contain `{placeholders}` in any order. Valid placeholders are `site_name`, `post_id`, `width`, `height`, `dimensions`, `type`, `file_size`, `creation_date`, `launch_date`, `uploader`, `tags`, `source`, plus `tags:<category>` for the tags of a specific category.
+
 ## Struct: `ThumbnailConfig`
 
 | Field | Type | Purpose |
@@ -130,16 +157,23 @@ Serialized as `camelCase`. Unknown fields are denied.
 | `webhooks` | `Vec<Url>` | Webhook URLs for notifications |
 | `password_secret` | `SmallString` | Secret for password hashing |
 | `content_secret` | `SmallString` | Secret for content URLs |
-| `domain` | `Option<SmallString>` | Server domain |
+| `token_encryption_secret` | `SmallString` | AES-256-GCM key (64 hex chars = 32 bytes) used to encrypt user tokens at rest. Default: `"change"` (placeholder, must be overridden) |
+| `domain` | `Option<SmallString>` | Server domain. Also used for absolute URLs in OpenGraph embed pages |
 | `delete_source_files` | `bool` | Whether to delete source files after post creation |
 | `append_tag_implications_on_post_edit` | `bool` | Whether to auto-append tag implications |
+| `enable_embeds` | `bool` | Enables OpenGraph embed pages for post links. Default: `true` |
 | `post_similarity_threshold` | `f64` | Threshold for reverse image search similarity |
 | `pool_name_regex` | `Regex` | Regex for pool names |
 | `pool_category_regex` | `Regex` | Regex for pool category names |
 | `log_filter` | `String` | Tracing filter directive string |
 | `auto_explain` | `bool` | Whether to enable PostgreSQL auto_explain |
 | `trusted_proxy` | `bool` | Whether to trust proxy headers |
+| `rate_limit_max_failures` | `usize` | Maximum failed basic-auth attempts per username within the window before further attempts are rejected with 429. Default: `20` |
+| `rate_limit_window_secs` | `u64` | Length of the failed-login sliding window, in seconds. Default: `60` |
+| `max_upload_size` | `usize` | Maximum size in bytes of files uploaded directly via multipart. Default: `4294967296` (4 GiB) |
+| `max_url_download_size` | `usize` | Maximum size in bytes of files downloaded from a URL. Default: `4294967296` (4 GiB) |
 | `thumbnails` | `ThumbnailConfig` | Thumbnail dimensions |
+| `embed` | `EmbedConfig` | OpenGraph embed page configuration |
 | `smtp` | `Option<SmtpConfig>` | SMTP configuration |
 | `anonymous_preferences` | `AnonymousPreferences` | Anonymous user preferences |
 | `public_info` | `PublicConfig` | Public-facing configuration |
@@ -172,13 +206,71 @@ Returns the URL path to a user's custom avatar, formatted as `{data_url}/avatars
 
 Returns the filesystem path to a user's custom avatar, formatted as `{data_dir}/avatars/{lowercase_username}.png`.
 
+### Method: `Config::max_multipart_body_size() -> usize`
+
+Returns the maximum size of a multipart request body. Computed as `max_upload_size` doubled plus 2 MiB, using saturating arithmetic.
+
+### Method: `Config::token_encryption_key() -> [u8; 32]`
+
+Parses `token_encryption_secret` into the 32-byte AES-256-GCM key via `crate::auth::token_crypto::parse_key`. Panics if the secret is not a valid 64-hex key. The startup validation (`validate_secrets`) checks the key before this method runs.
+
+## Configuration Defaults
+
+The following table lists the defaults from `config.toml.dist` for the new and changed configuration keys:
+
+| Key | Default | Notes |
+|-----|---------|-------|
+| `password_secret` | `"change"` | Placeholder. `validate_secrets` refuses to start the server with this value. |
+| `content_secret` | `"change"` | Placeholder. `validate_secrets` refuses to start the server with this value. |
+| `token_encryption_secret` | `"change"` | Placeholder. Must be a 64-char hex key. `validate_secrets` refuses to start the server with this value. |
+| `enable_embeds` | `true` | Enables OpenGraph embed pages for post links |
+| `max_upload_size` | `4294967296` | 4 GiB. Maximum size of files uploaded via multipart. |
+| `max_url_download_size` | `4294967296` | 4 GiB. Maximum size of files downloaded from a URL. |
+| `rate_limit_max_failures` | `20` | Failed basic-auth attempts before further attempts are rejected with 429 |
+| `rate_limit_window_secs` | `60` | Length of the failed-login sliding window, in seconds |
+| `password_regex` | `^.{8,}$` | Changed from `^.{5,}$`. Minimum password length is now 8 characters. |
+| `custom_field_name_regex` | `^[^\s%+#/<>"'&=]{1,64}$` | Hardened. Disallows `<`, `>`, `"`, `'`, `&`, `=`, and backtick. |
+| `secure_cookie` | `true` | Changed from `false`. The auth cookie `secure` flag is now enabled by default. |
+
+The `[embed]` section defaults:
+
+| Key | Default | Notes |
+|-----|---------|-------|
+| `logo_url` | `""` | Path or absolute URL |
+| `image` | `"post"` | `post`, `thumbnail`, `logo`, or `none` |
+| `site_name` | `"{site_name}"` | Text template |
+| `title` | `"Post #{post_id} - {site_name}"` | Text template |
+| `description` | `"View this {width}x{height} {type}"` | Text template |
+| `show_rating` | `true` | Emit an adult content marker on unsafe posts |
+| `include_post_id_meta` | `true` | Emit a `<meta name="post-id">` tag |
+
 ## Function: `create() -> Config`
 
 Deserializes the production configuration. Panics if called in a test build. Looks for `--config-path=<path>` in CLI arguments. Defaults to `"config"` (the file name `config.toml`).
 
+1. Builds the configuration via `create_config`.
+2. Calls `validate_secrets` on the result.
+3. Exits with code 1 if any secret is a placeholder.
+
+## Function: `validate_secrets(config: &Config)`
+
+Refuses to start the server with placeholder secrets. The default `"change"` values from `config.toml.dist` would salt passwords and content filenames with a known constant. The check runs after the operator's config file is merged, so a real deployment that overrides the secrets is unaffected.
+
+For each secret, the function checks whether the value is empty or equals `"change"`. For `token_encryption_secret`, the function also checks that `token_crypto::parse_key` accepts the value (it must be 64 hexadecimal characters).
+
+If any check fails:
+1. Prints an error message to stderr. The code uses `eprintln!` because tracing is not initialized yet.
+2. Exits with code 1.
+
+## Constant: `TEST_TOKEN_ENCRYPTION_SECRET`
+
+Test-only constant. A deterministic AES-256-GCM key for the test config, so seeded tokens can be encrypted and decrypted with the same key the tests use.
+
+Value: `"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"`.
+
 ## Function: `test_config(override_relative_path: Option<&str>) -> Config`
 
-Available only in test builds. Creates a test configuration with an optional override path relative to `test/request/`.
+Available only in test builds. Creates a test configuration with an optional override path relative to `test/request/`. Overrides `token_encryption_secret` with `TEST_TOKEN_ENCRYPTION_SECRET`.
 
 ## Function: `port() -> u16`
 
@@ -211,3 +303,16 @@ Internal function that builds the configuration:
 3. Deserializes into `Config`.
 4. On parse error, prints to stderr and exits with code 1.
 5. Sets `public_info.can_send_mails` to `true` if `smtp` is `Some`.
+6. Calls `validate_embed_config` on the embed config.
+
+## Constant: `VALID_EMBED_PLACEHOLDERS`
+
+The list of valid embed template placeholders: `site_name`, `post_id`, `width`, `height`, `dimensions`, `type`, `file_size`, `creation_date`, `launch_date`, `uploader`, `tags`, `source`. Placeholders with the prefix `tags:` (for example `tags:<category>`) are also valid.
+
+## Function: `validate_embed_config(embed: &EmbedConfig)`
+
+Validates the `site_name`, `title`, and `description` templates of the embed config:
+
+1. For each template, scans the string for `{...}` placeholders.
+2. For each placeholder, checks whether it is in `VALID_EMBED_PLACEHOLDERS` or starts with `tags:` followed by at least one character.
+3. If any placeholder is invalid, prints an error message to stderr and exits with code 1.

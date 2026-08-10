@@ -99,7 +99,11 @@ Creates a new user token via `POST /user-token/<userName>`. Sets expiry based on
 
 ### Method: `deleteToken(userName, userToken)`
 
-Calls `DELETE /user-token/<userName>/<userToken>`. On success, sets the auth cookie with a null token.
+1. Calls `GET /user-tokens/<userName>` to fetch the owner's token list, which includes the plaintext token values.
+2. Finds the list entry whose `token` field equals `userToken`.
+3. If no entry matches, resolves without deleting.
+4. Otherwise calls `DELETE /user-token/<userName>/<id>` with the matched entry's internal id.
+5. On success, sets the auth cookie with a null token.
 
 ### Method: `login(userName, userPassword, doRemember)`
 

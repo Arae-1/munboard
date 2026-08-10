@@ -18,6 +18,7 @@ This file provides a single HTTP API handler that redirects old-style content UR
 | `base64::Engine` | Base64 encoding/decoding |
 | `base64::engine::general_purpose::URL_SAFE_NO_PAD` | URL-safe Base64 without padding |
 | `hmac::{KeyInit, Mac, SimpleHmac}` | HMAC computation |
+| `subtle::ConstantTimeEq` | Constant-time comparison |
 | `utoipa_axum::router::OpenApiRouter` | Axum router |
 
 ## Router
@@ -86,7 +87,7 @@ None.
    - If this fails (returns `Err`), return `StatusCode::UNSUPPORTED_MEDIA_TYPE` (415).
 5. Compute the expected legacy hash:
    - Call `legacy_url_hash(&state.config, post_id)`.
-   - Compare with the `post_hash` from the URL.
+   - Compare the expected hash with the `post_hash` from the URL in constant time using `subtle::ConstantTimeEq` (`post_hash.as_bytes().ct_eq(expected_hash.as_bytes())`).
    - If they do not match, return `StatusCode::NOT_FOUND` (404).
 6. Compute the new-style `PostHash`:
    - Call `PostHash::new(&state.config, post_id)`.
@@ -110,4 +111,4 @@ Type alias: `Hmac = SimpleHmac<blake3::Hasher>`
 
 ## Security
 
-The legacy hash uses HMAC-BLAKE3 with the server's `content_secret`. An attacker cannot guess a valid legacy URL without knowing the secret. This prevents enumeration of post IDs through the legacy redirect endpoint.
+The legacy hash uses HMAC-BLAKE3 with the server's `content_secret`. An attacker cannot guess a valid legacy URL without knowing the secret. This prevents enumeration of post IDs through the legacy redirect endpoint. The submitted hash is compared with the expected hash in constant time, so the comparison does not leak information about the expected hash.

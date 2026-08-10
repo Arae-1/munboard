@@ -51,7 +51,7 @@ Applies sorting, offset, and limit to the filtered query. Returns ordered IDs.
 
 ## `TimeParsingError` Enum
 
-`mod.rs:62` — Error type for time parsing failures.
+`mod.rs:64` — Error type for time parsing failures.
 
 | Variant | Description |
 |---------|-------------|
@@ -60,9 +60,17 @@ Applies sorting, offset, and limit to the filtered query. Returns ordered IDs.
 | `NotAnInteger` | A date component is not a valid integer |
 | `OutOfRange` | A date component is out of valid range |
 
+## Maximum Query Length
+
+`mod.rs:80` — `MAX_QUERY_LEN` is the maximum length of a search query string. Its value is 4096 bytes.
+
+- The limit is measured in bytes (`str::len()`), not characters. The limit exists to cap parsing cost and memory, which scale with the encoded size, and byte length is a constant-time check.
+- 4096 bytes allows queries with hundreds of space-separated terms while bounding the cost of token splitting and the size of the generated temporary filter tables.
+- `SearchCriteria::new` checks the limit before any parsing work. A longer query returns `ApiError::QueryTooLong`, which has HTTP status 400 Bad Request.
+
 ## `SearchCriteria<'a, T>` Struct
 
-`mod.rs:75` — The core struct that holds all parsed search parameters.
+`mod.rs:84` — The core struct that holds all parsed search parameters.
 
 ### Fields
 
@@ -77,19 +85,20 @@ Applies sorting, offset, and limit to the filtered query. Returns ordered IDs.
 ### Methods
 
 #### `has_sort(&self) -> bool`
-`mod.rs:84` — Returns true if any sorts are set or `random_sort` is true.
+`mod.rs:93` — Returns true if any sorts are set or `random_sort` is true.
 
 #### `has_filter(&self) -> bool`
-`mod.rs:88` — Returns true if any filters are set.
+`mod.rs:97` — Returns true if any filters are set.
 
 #### `new(ctx, search_criteria, anonymous_token) -> ApiResult<Self>`
-`mod.rs:101` — Parses a search query string into filters and sorts.
+`mod.rs:110` — Parses a search query string into filters and sorts.
 
 **Parsing logic:**
 
-1. The search string is split by unescaped whitespace into terms.
-2. Each term is checked for a `-` prefix. If present, the filter is negated.
-3. Each term is then split on the first unescaped `:` character:
+1. If the query string is longer than `MAX_QUERY_LEN` (4096 bytes), the function returns `ApiError::QueryTooLong` (HTTP 400 Bad Request). This check runs before any parsing work, so pathological input fails fast with a clean 400 instead of driving the splitting logic.
+2. The search string is split by unescaped whitespace into terms.
+3. Each term is checked for a `-` prefix. If present, the filter is negated.
+4. Each term is then split on the first unescaped `:` character:
    - **`sort:random`** → Sets `random_sort = true`.
    - **`sort:<key>,<dir>`** → Parses a sort. The key is after `sort:`. The direction is after `,`. Valid directions: `asc`, `desc`. If no direction, defaults to `Desc`. If the sort is negated (`-sort:`), the direction is inverted.
    - **`<key>:<condition>`** → Parses a filter. The key before `:` is parsed as a token. The condition after `:` is stored as the filter condition string.
@@ -97,7 +106,7 @@ Applies sorting, offset, and limit to the filtered query. Returns ordered IDs.
 
 ## `QueryArgs` Struct
 
-`mod.rs:154` — Stores pagination parameters.
+`mod.rs:170` — Stores pagination parameters.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -106,7 +115,7 @@ Applies sorting, offset, and limit to the filtered query. Returns ordered IDs.
 
 ## `Order` Enum
 
-`mod.rs:160` — Sort direction.
+`mod.rs:176` — Sort direction.
 
 | Variant | Default | Description |
 |---------|---------|-------------|
@@ -117,7 +126,7 @@ The `Not` trait is used to invert direction: `!Asc = Desc`, `!Desc = Asc`.
 
 ## `Condition<V>` Enum
 
-`mod.rs:179` — A parsed filter condition for a typed column.
+`mod.rs:194` — A parsed filter condition for a typed column.
 
 | Variant | Description | Query Syntax |
 |---------|-------------|-------------|
@@ -128,7 +137,7 @@ The `Not` trait is used to invert direction: `!Asc = Desc`, `!Desc = Asc`.
 
 ## `StrCondition` Enum
 
-`mod.rs:189` — A parsed filter condition for a text column.
+`mod.rs:205` — A parsed filter condition for a text column.
 
 | Variant | Description |
 |---------|-------------|
@@ -137,7 +146,7 @@ The `Not` trait is used to invert direction: `!Asc = Desc`, `!Desc = Asc`.
 
 ## `UnparsedFilter<'a, T>` Struct
 
-`mod.rs:197` — An unparsed filter from the query string.
+`mod.rs:212` — An unparsed filter from the query string.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -148,11 +157,11 @@ The `Not` trait is used to invert direction: `!Asc = Desc`, `!Desc = Asc`.
 ### Methods
 
 #### `unnegated(self) -> Self`
-`mod.rs:205` — Returns a copy with `negated` set to false.
+`mod.rs:220` — Returns a copy with `negated` set to false.
 
 ## `ParsedSort<T>` Struct
 
-`mod.rs:215` — A parsed sort directive.
+`mod.rs:231` — A parsed sort directive.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -161,7 +170,7 @@ The `Not` trait is used to invert direction: `!Asc = Desc`, `!Desc = Asc`.
 
 ## `CacheState` Struct
 
-`mod.rs:225` — Tracks the state of the TEMP table filter cache.
+`mod.rs:240` — Tracks the state of the TEMP table filter cache.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -172,28 +181,29 @@ The `Not` trait is used to invert direction: `!Asc = Desc`, `!Desc = Asc`.
 ## SQL Functions
 
 ### `random() -> BigInt`
-`mod.rs:241` — PostgreSQL `random()` function declaration for Diesel.
+`mod.rs:258` — PostgreSQL `random()` function declaration for Diesel.
 
 ### `lower<T: SingleValue>(text: T) -> Text`
-`mod.rs:247` — PostgreSQL `lower()` function declaration. Used with wildcard filters to make PostgreSQL use TEXT indexes instead of CITEXT indexes.
+`mod.rs:263` — PostgreSQL `lower()` function declaration. Used with wildcard filters to make PostgreSQL use TEXT indexes instead of CITEXT indexes.
 
 ## Random Sort Seed Functions
 
 ### `set_seed(conn, client) -> QueryResult<()>`
-`mod.rs:252` — Sets the PostgreSQL global random seed. For anonymous users, the seed is `0.0`. For logged-in users, the seed is the user's `search_seed` value from the `user` table.
+`mod.rs:267` — Sets the PostgreSQL global random seed. For anonymous users, the seed is `0.0`. For logged-in users, the seed is the user's `search_seed` value from the `user` table.
 
 ### `change_user_seed(conn, client) -> QueryResult<()>`
-`mod.rs:266` — Generates a new random search seed for the user. Uses `OsRng` to generate a random `i16`, then converts it to an `f32` between `-1.0` and `1.0`. Only changes seeds for logged-in users.
+`mod.rs:281` — Generates a new random search seed for the user. Uses `OsRng` to generate a random `i16`, then converts it to an `f32` between `-1.0` and `1.0`. Only changes seeds for logged-in users.
 
 ## Query Parsing Flow
 
-1. The raw search string is split by unescaped whitespace into terms.
-2. Each term is checked for negation (`-` prefix).
-3. Each term is split on the first unescaped `:`.
-4. If the left side is `sort`, the term becomes a sort directive.
-5. If the left side is anything else, the term becomes a filter. The left side is parsed as a token. The right side is stored as the raw condition string.
-6. If there is no `:`, the entire term is an anonymous filter (uses the default token).
-7. Filters remain unparsed. They are parsed later during `build_filtered` when `apply_filter!`, `apply_str_filter!`, or `apply_time_filter!` is called.
+1. `SearchCriteria::new` rejects the raw search string if it is longer than `MAX_QUERY_LEN` (4096 bytes). The error is `ApiError::QueryTooLong` (HTTP 400 Bad Request).
+2. The raw search string is split by unescaped whitespace into terms.
+3. Each term is checked for negation (`-` prefix).
+4. Each term is split on the first unescaped `:`.
+5. If the left side is `sort`, the term becomes a sort directive.
+6. If the left side is anything else, the term becomes a filter. The left side is parsed as a token. The right side is stored as the raw condition string.
+7. If there is no `:`, the entire term is an anonymous filter (uses the default token).
+8. Filters remain unparsed. They are parsed later during `build_filtered` when `apply_filter!`, `apply_str_filter!`, or `apply_time_filter!` is called.
 
 ## Negation Logic
 

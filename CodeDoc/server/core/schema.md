@@ -344,9 +344,13 @@ When parent tag is present, child tag is suggested (but not mandatory).
 | `note` | `Varchar` | 128 | No | No |
 | `enabled` | `Bool` | — | No | No |
 | `expiration_time` | `Timestamptz` | — | Yes | No |
+| `token_hash` | `Text` | — | No | No |
+| `token_secret` | `Bytea` | — | No | No |
 | `creation_time` | `Timestamptz` | — | No | No |
 | `last_edit_time` | `Timestamptz` | — | No | No |
 | `last_usage_time` | `Timestamptz` | — | No | No |
+
+The `token_hash` column stores the BLAKE3 hash (hex) of the token; token authentication looks tokens up by it. The `token_secret` column stores the AES-256-GCM ciphertext (12-byte nonce followed by the ciphertext) of the token. The plaintext token is never stored. Migration 030 created the unique partial index `user_token_token_hash` on `token_hash` where `token_hash` <> `''`.
 
 ## Join Relationships
 

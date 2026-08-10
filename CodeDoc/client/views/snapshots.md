@@ -23,6 +23,8 @@ tags: [client, views, snapshots]
 - `makeItemCreation(type, data)` — formats item creation details (capitalizes keys, joins array values with commas)
 - `makeItemModification(type, data)` — formats modification diffs for each resource type
 
+All diff values are user-controlled and enter the DOM as HTML. The view escapes every diff value with `misc.escapeHtml` before inserting it. This applies to added/removed list items, old/new primitive values, tag category ids, and item creation keys and values.
+
 **Modification formatting by type**:
 - **tag_category**: name, color, default status changes
 - **tag**: names, category, description, suggestions, implications changes

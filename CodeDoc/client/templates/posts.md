@@ -60,6 +60,8 @@ tags: [client, templates, posts]
 **Variables**: `ctx.uploadable` (type, previewUrl, mimeType, name, safety, anonymous, forceAnonymous, key, lookalikes), `ctx.makeThumbnail`, `ctx.makeRadio`, `ctx.makeCheckbox`, `ctx.makePostLink`, `ctx.canUploadAnonymously`, `ctx.canViewPosts`, `ctx.enableSafety`, `ctx.getPostUrl`
 **Structure**: List item with thumbnail (image/video/empty based on type), header with move-up/move-down/remove buttons and filename, body with safety radio group, anonymous upload checkbox, messages, and lookalikes list (similar post thumbnails with copy-tags and add-relation checkboxes).
 
+The preview URL and the filename use escaped interpolation (`<%-`). This stops an uploadable URL or name from injecting markup.
+
 ---
 
 ## `post_merge.tpl`
@@ -80,6 +82,8 @@ tags: [client, templates, posts]
 **Used by**: PostReadonlySidebarControl
 **Variables**: `ctx.post` (all properties), `ctx.makeFileSize`, `ctx.makeUserLink`, `ctx.makeRelativeTime`, `ctx.makeThumbnail`, `ctx.makeCssName`, `ctx.getPrettyName`, `ctx.getPostUrl`, `ctx.escapeTagName`, `ctx.canViewTags`, `ctx.canEditPosts`, `ctx.canViewUsers`, `ctx.canListPosts`, `ctx.enableSafety`, `ctx.formatClientLink`, `ctx.makePostLink`, `ctx.extractRootDomain`
 **Structure**: Readonly sidebar with download link (file size, MIME type, dimensions), upload info (user link, relative time), safety indicator, zoom controls (original/fit width/fit height/fit both), source links, Google Images search link, social section (score-container, fav-container), relations nav (thumbnails), tags nav (compact tag list with category colors), pool link, custom fields list, launch date, media created date.
+
+Each source entry renders as a clickable link only for an allowlisted scheme (`http`, `https`, `mailto`, `ftp`) or for a URL without a scheme. Before scheme detection, the template strips leading/trailing control characters (ASCII 0x00-0x20) and all tab/newline/carriage-return characters. This mirrors browser URL preprocessing so a value such as `java\tscript:...` cannot bypass the check. Entries with any other scheme render as escaped text instead of a link.
 
 ---
 

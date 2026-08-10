@@ -19,6 +19,7 @@ Calls `super()`. Initializes `_orig` as an empty object. Calls `_updateFromRespo
 
 | Getter           | Return Type | Description                                |
 |------------------|-------------|--------------------------------------------|
+| `id`             | String      | The internal token id.                     |
 | `token`          | String      | The token string.                          |
 | `note`           | String      | Optional note describing the token.        |
 | `enabled`        | Boolean     | Whether the token is active.               |
@@ -33,6 +34,7 @@ Calls `super()`. Initializes `_orig` as an empty object. Calls `_updateFromRespo
 | Setter | Type   | Description                         |
 |--------|--------|-------------------------------------|
 | `note` | String | Sets the token's note description.  |
+| `enabled` | Boolean | Sets whether the token is active. |
 
 ## Static Methods
 
@@ -52,11 +54,11 @@ Creates a new token via `POST /api/user-token/<userName>` with `enabled: true`, 
 
 ## Method: `save(userName)`
 
-Builds a diff. Sends `PUT /api/user-token/<userName>/<origToken>` with `version` and changed `note`. On success, calls `_updateFromResponse()` and dispatches a `"change"` event.
+Builds a diff with `version`. Adds `note` when it differs from the original note. Adds `enabled` when it differs from the original enabled state. Sends `PUT /api/user-token/<userName>/<origId>`, where `<origId>` is the original internal token id. On success, calls `_updateFromResponse()` and dispatches a `"change"` event.
 
 ## Method: `delete(userName)`
 
-Sends `DELETE /api/user-token/<userName>/<origToken>` with `version`. On success, dispatches a `"delete"` event.
+Sends `DELETE /api/user-token/<userName>/<origId>`, where `<origId>` is the original internal token id, with `version`. On success, dispatches a `"delete"` event.
 
 ## Method: `_updateFromResponse(response)`
 
@@ -64,6 +66,7 @@ Maps API response fields:
 
 | API Field                  | Internal Property    |
 |----------------------------|----------------------|
+| `response.id`              | `_id`                |
 | `response.token`           | `_token`             |
 | `response.note`            | `_note`              |
 | `response.enabled`         | `_enabled`           |
@@ -73,7 +76,7 @@ Maps API response fields:
 | `response.lastEditTime`    | `_lastEditTime`      |
 | `response.lastUsageTime`   | `_lastUsageTime`     |
 
-Copies values to both `this` and `_orig`.
+Copies values to both `this` and `_orig`. Public-only responses omit `id` and `token`. For these responses, the method deletes `_id` and `_token` from the map so the current values stay unchanged.
 
 ## Events Emitted
 

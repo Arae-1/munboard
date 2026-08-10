@@ -50,14 +50,30 @@ A shell script that:
 
 | Location | Purpose |
 |----------|---------|
-| `~ ^/(docs\|apidoc)` | Proxy Swagger UI to backend |
+| `~ ^/(docs\|apidoc)` | Proxy Swagger UI to backend. Private by default: only private address ranges (127.0.0.1, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) are allowed, all others are denied |
 | `~ ^/api$` | Redirect `/api` to `/api/` |
-| `~ ^/api/(.*)$` | API proxy with CORS headers, gzip, 8GB max body, backend error handling |
+| `~ ^/api/(.*)$` | API proxy with CORS headers, security headers, gzip, 8GB max body, backend error handling |
 | `/data/` | Legacy redirect for old flat post URLs, then serves `/data` directory with sendfile. Unauthorized/not-found error pages |
+| `/data/temporary-uploads/` | Returns 403. Temporary upload staging files are internal only. More specific than `/data/`, so it wins for every request under this path |
+| `~ ^/post/[0-9]+/?$` | Proxies post URLs to the backend OpenGraph embed pages. Rewrites `/post/{id}` to `/embed/post/{id}` |
 | `/` | Serves static files from `/var/www`, falls back to `index.htm`. gzip_static for pre-compressed files |
 
+### Security headers:
+
+Sent on every response from the server block, and repeated in the `/api/` location (a location with its own `add_header` does not inherit server-level ones):
+
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Strict-Transport-Security`: value comes from the `$hsts_header` map. The map sends `max-age=31536000; includeSubDomains` only when `X-Forwarded-Proto` is `https`; otherwise it sends an empty value. This keeps HSTS off for plain-HTTP requests
+- `Content-Security-Policy`: `default-src 'self'; script-src 'self' https://unpkg.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`
+  - Scripts load from `'self'`, unpkg.com (Ruffle Flash emulator), and static.cloudflareinsights.com (Cloudflare Web Analytics beacon)
+  - `style-src 'unsafe-inline'` because the client injects `<style>` rules at runtime
+  - `connect-src` allows the WebSocket the client opens on port 8081
+  - `img-src https:` allows gravatar/external avatar images
+
 ### CORS for API:
-- `Access-Control-Allow-Origin: *`
+- `Access-Control-Allow-Origin` uses the `$cors_origin` map value, not a wildcard. The map echoes the request's `Origin` only when the origin matches the `Host` header the browser used (with optional port). Cross-site pages receive no `Access-Control-Allow-Origin` and cannot read API responses. The bundled client is same-origin
 - OPTIONS preflight returns methods (GET, POST, PUT, DELETE, OPTIONS) and headers (Authorization, Content-Type)
 
 ### Static file delivery:

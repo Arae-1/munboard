@@ -125,6 +125,13 @@ every privileged request must be authenticated. Available privileges depend on
 the user's rank. The way how rank translates to privileges is defined in the
 server's configuration.
 
+Failed basic-auth attempts are rate-limited per username. After
+`rate_limit_max_failures` (default 20) failures within
+`rate_limit_window_secs` (default 60 seconds), further attempts are rejected
+with the `429 Too Many Requests` status and the `RateLimited` error. The
+response includes a `Retry-After` header that tells the client how long to
+wait. A successful login clears the failure history of that username.
+
 It is recommended to add `?bump-login` GET parameter to the first request in a
 client "session" (where the definition of a session is up to the client), so
 that the user's last login time is kept up to date.
@@ -146,6 +153,10 @@ The benefit of token authentication is that beyond the initial login to acquire
 the first token, there is no need to transmit the user password in plaintext
 via basic auth. Additionally tokens can be revoked at anytime allowing a
 cleaner interface for isolating clients from user credentials.
+
+Tokens are never stored in plaintext. The server stores a BLAKE3 hash of the
+token and an AES-256-GCM ciphertext of the token. Changing the user's password
+or completing a password reset revokes all of the user's tokens.
 
 ### Basic requests
 
@@ -179,6 +190,11 @@ uploaded data, which was given token `deadbeef`, in an API that accepts a file
 named `content`, the client should pass `{"contentToken":"deadbeef"}` as part
 of the JSON message body. If the file with the particular token doesn't exist
 or it has expired, the server will show an error.
+
+A file larger than `max_upload_size` (or `max_url_download_size` when the
+server downloads the file from a URL) is rejected with the `FileTooLarge`
+error. Upload metadata larger than 1 MiB is rejected with the
+`MetadataTooLarge` error.
 
 ### Error handling
 
@@ -1843,7 +1859,9 @@ data.
 
 - **Description**
 
-    Searches for user tokens for the given user.
+    Searches for user tokens for the given user. The plaintext token is
+    visible only to the user who owns the tokens. Other users receive the
+    token metadata without the token.
 
 ### Creating user token
 - **Request**
@@ -1860,6 +1878,10 @@ data.
     }
     ```
 
+    If `expirationTime` is omitted, the token expires after 30 days. An
+    `expirationTime` more than 10 years in the future is rejected with the
+    `422 Unprocessable Entity` status.
+
 - **Output**
 
     A [user token resource](#user-token).
@@ -1867,17 +1889,22 @@ data.
 - **Errors**
 
     - the user does not exist
+    - the expiration time is more than 10 years in the future
     - privileges are too low
 
 - **Description**
 
     Creates a new user token that can be used for authentication of API
-    endpoints instead of a password.
+    endpoints instead of a password. The response contains the plaintext
+    token. After creation, the token is visible only to the user who owns it.
 
 ### Updating user token
 - **Request**
 
-    `PUT /user-token/<user_name>/<token>`
+    `PUT /user-token/<user_name>/<id>`
+
+    `<id>` is the internal user token id from the [user token
+    resource](#user-token). It is not the token value.
 
 - **Input**
 
@@ -1890,6 +1917,10 @@ data.
     }
     ```
 
+    An explicit `expirationTime` of null is rejected with the `422
+    Unprocessable Entity` status. An `expirationTime` more than 10 years in
+    the future is rejected the same way.
+
 - **Output**
 
     A [user token resource](#user-token).
@@ -1899,6 +1930,7 @@ data.
     - the version is outdated
     - the user does not exist
     - the user token does not exist
+    - the expiration time is null or more than 10 years in the future
     - privileges are too low
 
 - **Description**
@@ -1910,7 +1942,10 @@ data.
 ### Deleting user token
 - **Request**
 
-    `DELETE /user-token/<user_name>/<token>`
+    `DELETE /user-token/<user_name>/<id>`
+
+    `<id>` is the internal user token id from the [user token
+    resource](#user-token). It is not the token value.
 
 - **Input**
 
@@ -1927,7 +1962,7 @@ data.
 - **Errors**
 
     - the user does not exist
-    - the token does not exist
+    - the user token does not exist
     - privileges are too low
 
 - **Description**
@@ -2179,9 +2214,10 @@ A single user token.
 
 ```json5
 {
+    "id":             <id>,
     "user":           <user>,
     "token":          <token>,
-    "note":           <token>,
+    "note":           <note>,
     "enabled":        <enabled>,
     "expirationTime": <expiration-time>,
     "version":        <version>,
@@ -2192,8 +2228,9 @@ A single user token.
 ```
 
 **Field meaning**
+- `<id>`: internal identifier of the token. It is not a secret. Use it to address update and delete requests.
 - `<user>`: micro user. See [micro user](#micro-user).
-- `<token>`: the token that can be used to authenticate the user.
+- `<token>`: the token value that can be used to authenticate the user. It is visible only to the user who owns the token. Other users receive the token metadata without this field.
 - `<note>`: a note that describes the token.
 - `<enabled>`: whether the token is still valid for authentication.
 - `<expiration-time>`: time when the token expires. It must include the timezone as per RFC 3339.
@@ -2864,6 +2901,9 @@ direction, which can be also controlled by negating the whole token.
 
 You can escape special characters such as `:`, `*`, and `,` by prepending them with a
 backslash: `\\`.
+
+A search query longer than 4096 bytes is rejected with the `400 Bad Request`
+status and the `QueryTooLong` error.
 
 **Example**
 

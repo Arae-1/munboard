@@ -62,15 +62,18 @@ Maps to table: `user_token`
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | `Uuid` | Primary key. A UUID v4 token identifier. |
+| `id` | `Uuid` | Primary key. The internal token identifier. It is not a secret; update and delete requests address tokens by it. |
 | `user_id` | `i64` | Foreign key to `user.id`. |
-| `note` | `Option<&'a str>` | An optional description note for the token. |
+| `note` | `Option<&'a str>` | An optional description note for the token. When `None`, the database default (`""`) is used. |
 | `enabled` | `bool` | Whether the token is active. |
-| `expiration_time` | `Option<DateTime>` | When the token expires. Null if it never expires. |
+| `expiration_time` | `Option<DateTime>` | When the token expires. The API always sets a value: create defaults to 30 days and update rejects explicit null. |
 
 Diesel annotations:
 - `#[diesel(table_name = user_token)]`
+- `#[diesel(treat_none_as_default_value = true)]` — `None` values are omitted from the INSERT so the database column default is used.
 - `#[diesel(check_for_backend(Pg))]`
+
+The struct does not include `token_hash` or `token_secret`. New rows default those columns to the empty database values (`''` and `'\x'`); callers that store a real token set them explicitly in the INSERT.
 
 ### `UserToken`
 
@@ -80,11 +83,13 @@ Derives: `AsChangeset`, `Associations`, `Identifiable`, `Queryable`, `Selectable
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | `Uuid` | Primary key. UUID v4 token identifier. |
+| `id` | `Uuid` | Primary key. Internal identifier of the token. Never a secret; used to address update and delete requests. |
 | `user_id` | `i64` | Foreign key to `user.id`. |
 | `note` | `LargeString` | A description note for the token. |
 | `enabled` | `bool` | Whether the token is active. |
-| `expiration_time` | `Option<DateTime>` | When the token expires. Null if it never expires. |
+| `expiration_time` | `Option<DateTime>` | When the token expires. The API always sets a value: create defaults to 30 days and update rejects explicit null. |
+| `token_hash` | `String` | BLAKE3 hash (hex) of the token. Lookup index for authentication. |
+| `token_secret` | `Vec<u8>` | AES-256-GCM ciphertext (12-byte nonce followed by the ciphertext) of the token. The plaintext token is never stored. |
 | `creation_time` | `DateTime` | Timestamp when the token was created. |
 | `last_edit_time` | `DateTime` | Timestamp when the token was last edited. |
 | `last_usage_time` | `DateTime` | Timestamp of the most recent token usage. |

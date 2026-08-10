@@ -13,8 +13,9 @@ This file provides three Axum middleware functions that run on every API request
 | `crate::auth::{Client as AuthClient, header}` | Authentication client and header parsing |
 | `crate::model::enums::UserRank` | User rank enum |
 | `crate::model::snapshot::Snapshot` | Snapshot database model |
-| `crate::schema::{snapshot, user}` | Diesel schemas |
+| `crate::schema::{snapshot, user, user_token}` | Diesel schemas |
 | `crate::string::SmallString` | Compact string |
+| `crate::time::DateTime` | Date-time type |
 | `crate::update` | Resource update functions |
 | `axum` | Web framework extractors and middleware |
 | `diesel` | Database query builder |
@@ -68,7 +69,7 @@ The error log format is: `request failed with status=<code> error=<message>`.
 pub async fn auth(State(state): State<AppState>, mut request: Request, next: Next) -> ApiResult<Response>
 ```
 
-**Purpose:** Authenticates the user from the `Authorization` header. Injects an `AuthClient` into request extensions. Optionally updates the user's last login time.
+**Purpose:** Authenticates the user from the `Authorization` header. Injects an `AuthClient` into request extensions. Optionally updates the user's last login time and the token usage time.
 
 **Execution order:** Before the handler.
 
@@ -77,15 +78,47 @@ pub async fn auth(State(state): State<AppState>, mut request: Request, next: Nex
 1. Extract the `AUTHORIZATION` header from the request.
 2. If the header is present:
    - Convert the header value to a string via `to_str()`.
-   - Call `header::authenticate_user(&state, auth_str)`. This function handles both Basic auth (username:password) and Token auth (username:token), returning an `AuthClient`.
-3. If no header is present:
+   - Call `header::authenticate_user(&state, auth_str)`. This function handles both Basic auth (username:password) and Token auth (username:token).
+   - Match the result:
+     - `Ok(authenticated)` — authentication succeeded.
+     - `Err(AuthenticateError::RateLimited { retry_after_secs })` — the username is rate-limited. Answer `429` with the `rate_limited_response` body and a `Retry-After` header. Do not run the handler.
+     - `Err(AuthenticateError::Auth(err))` — return the wrapped `ApiError`.
+3. If no header is present, the client is anonymous:
    - Create an anonymous `AuthClient` with `AuthClient::new(None, UserRank::Anonymous)`.
-4. If the client is not anonymous AND the request URI query string contains `bump-login`:
+4. If the client is not anonymous AND the request URI query string contains the exact `bump-login` parameter:
+   - Call `has_bump_login_param` to match the exact `bump-login` query parameter. The query is parsed with `url::form_urlencoded::parse`, so a value merely containing `bump-login` (for example `?note=bump-login`) does not match.
    - Get a database connection.
    - Call `update::user::last_login_time(conn, user_id)` to update the user's last login timestamp.
+   - If the client authenticated with a token, update the token's `last_usage_time` to now. The update matches `user_token.token_hash`.
 5. Insert the `AuthClient` into `request.extensions()`.
 6. Run the remaining middleware and handler via `next.run(request).await`.
 7. Return the response.
+
+### Helper: `has_bump_login_param`
+
+```
+fn has_bump_login_param(query: Option<&str>) -> bool
+```
+
+Returns true when the query string contains the exact `bump-login` parameter. It parses the query with `url::form_urlencoded::parse` and checks the parsed keys. A value that merely contains the string `bump-login` does not match.
+
+### Helper: `rate_limited_response`
+
+```
+fn rate_limited_response(retry_after_secs: u64) -> Response
+```
+
+Answers `429 Too Many Requests` with a JSON body:
+
+```json
+{
+  "name": "RateLimited",
+  "title": "Failed Authentication",
+  "description": "Too many failed login attempts. Try again later."
+}
+```
+
+It also sets the `Retry-After` header to `retry_after_secs`.
 
 ### Error Cases
 
@@ -93,6 +126,7 @@ pub async fn auth(State(state): State<AppState>, mut request: Request, next: Nex
 |-----------|-------|
 | `Authorization` header value is not valid UTF-8 | `ApiError::HeaderDeserialization` |
 | Authentication fails (wrong password, wrong token, etc.) | `ApiError::FailedAuthentication` |
+| Username is rate-limited after repeated failed logins | `429` response with `Retry-After` header and `RateLimited` JSON body |
 | Database error during login time update | `ApiError::FailedQuery` or `ApiError::FailedConnection` |
 
 ---
@@ -199,4 +233,7 @@ async fn post_to_webhook(url: Url, snapshot: Arc<Snapshot>, user_ip: Option<Stri
 
 | Test Function | Serial | Description |
 |---------------|--------|-------------|
-| `unauthorized` | parallel | Tests authentication failures: wrong password, wrong username with basic auth, wrong username with token auth, username-token mismatch, wrong token, expired token, disabled token, missing credentials, unencoded credentials |
+| `unauthorized` | parallel | Tests authentication failures: wrong password, wrong username with basic auth, wrong username with token auth, username-token mismatch, wrong token, expired token, disabled token, missing credentials, unencoded credentials. Expired and disabled tokens are inserted with their hashes so the lookup succeeds and the expiry/disabled checks are exercised |
+| `token_auth_bumps_last_usage_time` | serial | Mints a token through the API, then asserts the token usage time is unchanged without `bump-login` and updated with the exact `bump-login=true` parameter. A value merely containing `bump-login` does not trigger the update |
+| `basic_auth_correct_password_works_during_rate_limit` | serial | Exhausts the failed-login budget with 20 wrong passwords (401), then asserts the next attempt is rate-limited (429 with `RateLimited` body). The correct password still authenticates during the lockout |
+| `basic_auth_case_variant_shares_rate_limit` | serial | Locks a username out with 21 wrong-password attempts, then asserts an ALL-CAPS variant of the username shares the rate-limit budget (the key is normalized to lowercase) and the correct password authenticates through the normalized key |

@@ -10,7 +10,7 @@ This file provides the HTTP API handler for temporary file uploads. Uploaded fil
 |--------|---------|
 | `crate::api::doc::UPLOAD_TAG` | OpenAPI documentation tag |
 | `crate::api::error::{ApiError, ApiResult}` | Error types |
-| `crate::app::AppState` | Application state |
+| `crate::app::{AppState, Context}` | Application state and request context |
 | `crate::config::{Action, Config}` | Privilege actions and configuration |
 | `crate::content::upload::{PartName, UploadToken}` | Upload types |
 | `crate::content::{download, upload}` | Download and upload functions |
@@ -58,8 +58,9 @@ Returns a router with the `upload` route and a `DefaultBodyLimit::max(config.max
 - **Method:** POST
 - **Path:** `/uploads`
 - **Authentication:** Required
-- **Privilege:** `Action::UploadCreate`
+- **Privilege:** `Action::UploadCreate` for all requests; URL downloads additionally require `Action::UploadUseDownloader`
 - **Per-file size limit:** `config.max_upload_size`
+- **Total body size limit:** `config.max_multipart_body_size()` (2x `max_upload_size` + 2 MiB)
 
 ### Handler: `upload`
 
@@ -93,8 +94,9 @@ None.
 2. Match on the body type:
 
    **JSON branch** (`JsonOrMultipart::Json(payload)`):
-   - Call `upload_from_url(&ctx.config, payload)`.
-   - This function calls `download::from_url(config, body.content_url)` which downloads the file from the given URL and stores it in temporary storage.
+   - Call `upload_from_url(&ctx, payload)`.
+   - URL downloads require the `Action::UploadUseDownloader` privilege, verified before any network fetch.
+   - The function calls `download::from_url(config, body.content_url)` which downloads the file from the given URL and stores it in temporary storage.
    - Return `UploadResponse` with the token.
 
    **Multipart branch** (`JsonOrMultipart::Multipart(payload)`):
@@ -104,11 +106,12 @@ None.
 
      a. If `decoded_body.files` matches `[Some(token)]` (a file with name `content` was uploaded directly):
         - Return `UploadResponse { token }`.
+        - This direct file-upload path is gated by `Action::UploadCreate` only.
 
      b. If `decoded_body.metadata` is `Some(metadata)` (a JSON metadata part was provided):
         - Deserialize the metadata bytes as `UploadBody` via `serde_json::from_slice`.
         - Call `upload_from_url` with the URL from the metadata.
-        - This allows URL-based uploads through the multipart form.
+        - This allows URL-based uploads through the multipart form, and therefore also requires `Action::UploadUseDownloader`.
 
      c. If neither a file nor metadata is present:
         - Return `ApiError::MissingFormData`.
@@ -116,11 +119,12 @@ None.
 ### Helper Function: `upload_from_url`
 
 ```
-async fn upload_from_url(config: &Config, body: UploadBody) -> ApiResult<Json<UploadResponse>>
+async fn upload_from_url(ctx: &Context, body: UploadBody) -> ApiResult<Json<UploadResponse>>
 ```
 
-1. Call `download::from_url(config, body.content_url)`.
-2. Return `UploadResponse` with the resulting token.
+1. Verify the authenticated user has `Action::UploadUseDownloader` privilege. This happens BEFORE the download, so unauthorized callers never trigger a network fetch.
+2. Call `download::from_url(&ctx.config, body.content_url)`.
+3. Return `UploadResponse` with the resulting token.
 
 ## Notes
 

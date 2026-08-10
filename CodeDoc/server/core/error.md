@@ -17,7 +17,7 @@ A flat enum with 218 variants representing every distinct error condition in the
 | Authentication | `ExpiredToken`, `InsufficientPrivileges`, `NotLoggedIn`, `MalformedCredentials` |
 | Resource not found | `CommentNotFound`, `PostNotFound`, `TagNotFound`, `UserNotFound`, `PoolNotFound` |
 | Resource conflict | `UserNameAlreadyExists`, `TagNameAlreadyExists`, `DuplicatePost`, `SelfMerge` |
-| Validation | `ExpressionFailsRegex`, `InvalidPassword`, `ValueTooLong`, `ValueTooShort` |
+| Validation | `ExpressionFailsRegex`, `InvalidPassword`, `QueryTooLong`, `ValueTooLong`, `ValueTooShort` |
 | Content processing | `FFmpegError`, `GenericImageError`, `UnsupportedFormat`, `EmptyVideo` |
 | Email | `EmailMissingTo`, `EmailAddressInvalidDomain` |
 | JSON parsing | `JsonSyntaxError`, `JsonUnexpectedEOF` |
@@ -66,7 +66,7 @@ Converts any error type to its corresponding `ErrorName`.
 | `std::num::IntErrorKind` | Integer parse errors | `EmptyValue`, `InvalidDigit`, `PosOverflow`, `NegOverflow`, `ZeroNotAllowed` |
 | `swf::error::Error` | SWF decoding errors | `Avm1ParseError`, `InvalidData`, `SwfParseError`, `IoError`, `Unsupported` |
 | `tokio::task::JoinError` | Async task errors | `TaskPanicked` if panic, `TaskCancelled` otherwise |
-| `crate::api::error::ApiError` | Application-level errors | Exhaustive mapping; delegates to inner error `kind()` where applicable |
+| `crate::api::error::ApiError` | Application-level errors | Exhaustive mapping; delegates to inner error `kind()` where applicable. Size-limit and query-length variants map directly: `FileTooLarge` → `ErrorName::FileTooLarge`, `MetadataTooLarge` → `ErrorName::MetadataTooLarge`, `QueryTooLong` → `ErrorName::QueryTooLong`. |
 
 ## Pattern
 

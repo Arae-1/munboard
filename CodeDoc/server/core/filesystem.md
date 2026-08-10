@@ -4,14 +4,6 @@
 
 This file defines data directory types and provides file system operations for saving, deleting, moving, and swapping media files, thumbnails, avatars, and temporary uploads.
 
-## Constant: `MAX_URL_DOWNLOAD_SIZE`
-
-```rust
-pub const MAX_URL_DOWNLOAD_SIZE: usize = 4 * 1024_usize.pow(3);
-```
-
-Maximum allowed size for URL-based downloads. Set to 4 GiB.
-
 ## Enum: `Directory`
 
 | Variant | String | Purpose |
@@ -42,11 +34,13 @@ Saves a streamed file to the temporary uploads directory.
 
 **Process:**
 1. Creates an `UploadToken` with the MIME type.
-2. Creates parent directories for the upload path.
-3. Streams chunks to the file, tracking total bytes.
-4. If `max_size` is set and exceeded, returns `ApiError::FileTooLarge(max)`.
-5. Verifies magic bytes after saving.
-6. Returns the `UploadToken`.
+2. Calls `ensure_not_symlink` on the upload path. Writes through symlinks are refused.
+3. Creates parent directories for the upload path.
+4. Streams chunks to the file, tracking total bytes.
+5. If `max_size` is set and the total exceeds it, returns `ApiError::FileTooLarge(ByteSize(max))`. Callers pass `Some(config.max_upload_size)` for multipart uploads and `Some(config.max_url_download_size)` for URL downloads; the limits are config-driven.
+6. Calls `file.flush()` and `file.sync_all()` to make the written data durable and visible to other processes. This happens before reopening the file for verification, so the subsequent open cannot observe stale or empty data on network or overlay filesystems.
+7. Verifies magic bytes (`verify_magic_bytes`) after saving. If verification fails, logs a warning with the total bytes written, the path, and the MIME type, then returns the error.
+8. Returns the `UploadToken`.
 
 **Error handling:** Does not clean up on error. Stale uploads are cleaned by the periodic cleanup task.
 
@@ -61,9 +55,10 @@ Saves a custom avatar thumbnail for a user.
 
 **Process:**
 1. Gets the avatar path from config.
-2. Creates parent directories.
-3. Converts image to RGB8 and saves.
-4. Returns the file size in bytes.
+2. Calls `ensure_not_symlink` on the avatar path.
+3. Creates parent directories.
+4. Converts image to RGB8 and saves.
+5. Returns the file size in bytes.
 
 ### `delete_custom_avatar(config, username) -> std::io::Result<()>`
 
@@ -80,9 +75,10 @@ Saves a post thumbnail (generated or custom) to disk.
 
 **Process:**
 1. Gets the thumbnail path based on type.
-2. Creates parent directories.
-3. Converts to RGB8 and saves.
-4. Returns file size.
+2. Calls `ensure_not_symlink` on the thumbnail path.
+3. Creates parent directories.
+4. Converts to RGB8 and saves.
+5. Returns file size.
 
 ### `delete_post_thumbnail(post, thumbnail_type) -> std::io::Result<()>`
 
@@ -110,10 +106,11 @@ Swaps the filesystem contents of two posts as if their IDs were swapped.
 Moves a file from `from` to `to`.
 
 **Process:**
-1. Creates parent directories of `to`.
-2. Tries `std::fs::rename` first.
-3. If rename fails with `CrossesDevices`, falls back to copy-then-remove.
-4. Sets standard permissions (`0o644`) on the destination. Warns if permission setting fails.
+1. Calls `ensure_not_symlink` on `to`.
+2. Creates parent directories of `to`.
+3. Tries `std::fs::rename` first.
+4. If rename fails with `CrossesDevices`, falls back to copy-then-remove.
+5. Sets standard permissions (`0o644`) on the destination. Warns if permission setting fails.
 
 ### `purge_temporary_uploads(config) -> std::io::Result<()>`
 
@@ -144,6 +141,17 @@ Swaps two files by temporarily renaming one to a temp path, moving the second to
 ### `set_permissions(path: &Path) -> std::io::Result<()>`
 
 Sets standard file permissions (`0o644`) on a path. Prevents permission errors on different systems after moving files.
+
+### `ensure_not_symlink(path: &Path) -> std::io::Result<()>`
+
+Returns an error if `path` exists and is a symlink.
+
+**Algorithm:**
+- Read the file type with `std::fs::symlink_metadata(path)`.
+- If the metadata exists and the file type is a symlink: return `Err(PermissionDenied)` with the message `"Refusing to write through symlink at {path:?}"`.
+- Otherwise: return `Ok(())`.
+
+Called by `save_uploaded_file`, `save_custom_avatar`, `save_post_thumbnail`, and `move_file` before writing, so an attacker cannot redirect a write to an arbitrary file through a pre-planted symlink.
 
 ### `create_parent_directories(path: &Path) -> std::io::Result<()>`
 

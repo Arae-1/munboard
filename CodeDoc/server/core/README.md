@@ -80,7 +80,7 @@ An `ActionTable<UserRank>` — maps every `Action` (e.g., `PostCreate`, `TagEdit
 - **`Directory` enum** — Five data directories: Avatars, Posts, GeneratedThumbnails, CustomThumbnails, TemporaryUploads.
 - **File operations** — `save_uploaded_file`, `save_custom_avatar`, `save_post_thumbnail`, `delete_content`, `delete_post`, `swap_posts`, `move_file` (with cross-device fallback).
 - **Upload cleanup** — `purge_temporary_uploads` at startup, spawned periodic task (`spawn_temporary_uploads_cleanup_task`) runs every 10 minutes with two-pass stale detection.
-- **Size limits** — `MAX_URL_DOWNLOAD_SIZE` = 4 GiB.
+- **Size limits** — `max_upload_size` and `max_url_download_size` config keys, default 4 GiB each.
 
 ## Time and String Types
 

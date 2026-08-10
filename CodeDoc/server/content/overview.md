@@ -6,6 +6,7 @@
 - [cache.md](cache.md)
 - [decode.md](decode.md)
 - [download.md](download.md)
+- [embed.md](embed.md)
 - [flash.md](flash.md)
 - [hash.md](hash.md)
 - [signature.md](signature.md)
@@ -15,6 +16,8 @@
 ## Purpose
 
 The content module handles the full upload and processing pipeline for post content. It manages downloading, decoding, hashing, thumbnail generation, Flash processing, signature extraction, and caching.
+
+The embed page documents the OpenGraph embed pages served for post links. The embed module renders post previews for chat applications and crawlers.
 
 ## Upload Pipeline Overview
 
@@ -131,22 +134,24 @@ Searches SWF tags for decodable images:
 - `webp_is_animated`: Uses the decoder's built-in `has_animation()`.
 
 ### `image_reader_limits`
-Returns image reading limits with max allocation of 4 GB to prevent memory exhaustion attacks.
+Returns image reading limits: maximum dimension 16384 px, maximum allocation 512 MiB. The limits prevent memory exhaustion attacks.
 
 ## Download (`download.rs`)
 
 ### `from_url`
 Downloads content from a URL:
-1. Validates the URL (only HTTP/HTTPS, blocks private IP ranges).
-2. Sends a GET request with a fake user agent.
-3. On 403 Forbidden, retries with the original URL as the Referer header.
-4. Extracts the Content-Type header to determine MIME type.
-5. Streams the response body to a file in the temporary uploads directory, limited to `MAX_URL_DOWNLOAD_SIZE`.
+1. Validates the URL: only HTTP and HTTPS schemes are allowed.
+2. Resolves the host and rejects the URL if any resolved IP is private. The resolved addresses are pinned with `resolve_to_addrs` to prevent DNS rebinding.
+3. Sends a GET request with a fake user agent and a 30-second timeout.
+4. Follows redirects manually, up to 10. Each redirect is validated against the private-IP filter.
+5. On 403 Forbidden, retries once with the original URL as the Referer header.
+6. Extracts the Content-Type header to determine the MIME type.
+7. Streams the response body to a file in the temporary uploads directory, limited to `config.max_url_download_size`.
 
 ### `is_private_ip`
-Checks if an IP address is private/RFC 1918:
-- IPv4: 127.x, 10.x, 172.16-31.x, 192.168.x, 169.254.x.
-- IPv6: loopback and unique local (fc00::/7).
+Checks if an IP address is private or otherwise unreachable from the public internet:
+- IPv4: 0.0.0.0/8, 10.0.0.0/8, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10 (CGNAT), 192.0.0.0/24, 198.18.0.0/15 (benchmarking), 224.0.0.0/4 (multicast).
+- IPv6: loopback, unspecified, fc00::/7 (unique local), fe80::/10 (link-local), and IPv4-mapped addresses (checked against the IPv4 list).
 
 ### `validate_url`
 Resolves the URL's hostname via DNS and checks every resolved IP against `is_private_ip`. Blocks the URL if any resolved address is private. Only permits HTTP and HTTPS schemes.

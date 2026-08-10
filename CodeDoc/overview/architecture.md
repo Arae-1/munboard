@@ -68,7 +68,7 @@ NGINX (client container, port 80)
   │  Strip /api/ prefix
   │  proxy_pass http://server:6666/posts?query=sky
   │  Headers: X-Forwarded-For, X-Real-IP
-  │  CORS: Access-Control-Allow-Origin: *
+  │  CORS: same-origin only (no wildcard)
   │  Timeout: 60s
   ▼
 Axum Server (server container, port 6666)

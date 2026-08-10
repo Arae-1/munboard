@@ -128,6 +128,7 @@ The client and server share a `/data` volume for media files. The server writes 
   - [cache.md](server/content/cache.md) — Ring buffer upload cache
   - [decode.md](server/content/decode.md) — Image/video decoding
   - [download.md](server/content/download.md) — HTTP content download
+  - [embed.md](server/content/embed.md) — OpenGraph embed pages for post links
   - [flash.md](server/content/flash.md) — Flash/SWF processing
   - [hash.md](server/content/hash.md) — Content hashing (blake3, MD5, SHA1, SHA256)
   - [signature.md](server/content/signature.md) — Image signature for reverse search
@@ -138,6 +139,7 @@ The client and server share a `/data` volume for media files. The server writes 
 - [Authentication Overview](server/auth/overview.md)
   - [header.md](server/auth/header.md) — Auth header parsing (Basic + Token)
   - [password.md](server/auth/password.md) — Argon2 password hashing
+  - [token_crypto.md](server/auth/token_crypto.md) — Token at-rest encryption (AES-256-GCM)
 
 ### Server Admin CLI
 - [Admin CLI Overview](server/admin/overview.md)

@@ -173,3 +173,16 @@ Adds `custom_field.last_edit_time` (TIMESTAMPTZ, default NOW()).
 
 ### 029 — Add Password Reset Token
 Adds `user.password_reset_token` (TEXT, nullable) and `user.password_reset_expires` (TIMESTAMPTZ, nullable).
+
+### 030 — Hash User Tokens
+Stores only a BLAKE3 hash (hex) and an AES-256-GCM ciphertext of each user token; the plaintext token value is never persisted.
+
+**Deletes** all existing rows from `user_token`: legacy rows stored the raw token in the `id` column, so their hashes cannot be recomputed and the tokens are revoked.
+
+**Adds columns**:
+- `token_hash` (TEXT, NOT NULL, default `''`).
+- `token_secret` (BYTEA, NOT NULL, default `'\x'`).
+
+**Creates index**: unique partial index `user_token_token_hash` on `token_hash` WHERE `token_hash` <> `''`. Real tokens get a unique 64-character hex hash; empty-string hashes (rows without a token value, for example legacy inserts) may repeat.
+
+**Down migration**: drops the index, then drops the `token_secret` and `token_hash` columns.

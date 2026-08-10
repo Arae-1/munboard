@@ -2,11 +2,11 @@
 
 ## Summary
 
-This module handles file uploads from HTTP multipart form data. It extracts files and metadata from multipart requests, validates MIME types against file extensions and magic bytes, and saves uploaded files to the temporary directory with UUID-based tokens.
+This module handles file uploads from HTTP multipart form data. It extracts files and metadata from multipart requests, validates MIME types against file extensions and magic bytes, and saves uploaded files to the temporary directory with UUID-based tokens. File parts stream to disk in chunks, so the server does not load a whole file into memory. Size limits come from configuration: `config.max_upload_size` for file parts and `MAX_METADATA_SIZE` for the JSON metadata part.
 
 ## Imports
 
-- `api::error::{ApiError, ApiResult}`: API error types.
+- `api::error::{ApiError, ApiResult, ByteSize}`: API error types.
 - `config::Config`: Application configuration.
 - `filesystem::{self, Directory}`: File system operations and directory constants.
 - `model::enums::MimeType`: MIME type enum.
@@ -15,10 +15,19 @@ This module handles file uploads from HTTP multipart form data. It extracts file
 - `axum::extract::rejection::{JsonRejection, MissingJsonContentType}`: JSON rejection types.
 - `serde::{Deserialize, Deserializer, Serialize}`: Serialization.
 - `std::ffi::OsStr`: OS string handling.
+- `std::io::Read`: Read trait (used by `verify_magic_bytes`).
 - `std::path::{Path, PathBuf}`: File paths.
 - `std::str::FromStr`: String parsing.
 - `strum::IntoStaticStr`: Enum to static string conversion.
 - `uuid::Uuid`: UUID generation.
+
+## Constant: `MAX_METADATA_SIZE`
+
+```rust
+const MAX_METADATA_SIZE: usize = 1024_usize.pow(2);
+```
+
+Maximum size of the JSON `"metadata"` multipart part, in bytes (1 MiB). The metadata part streams in chunks; if the total exceeds this limit, the extraction fails with `ApiError::MetadataTooLarge(ByteSize(MAX_METADATA_SIZE))`.
 
 ## Struct: `UploadToken`
 
@@ -117,8 +126,8 @@ Extracts files and metadata from a multipart form.
    - If the field name matches neither `fields` nor `"metadata"`: skip the field.
    - **Get MIME type for file fields:** If `position` was found, call `get_mime_type(&field)`. This returns `(index, mime_type)`.
    - **Metadata validation:** If `position` is `None` (it is the metadata field) and the content type is not `"application/json"`: return an error (`ApiError::JsonRejection(MissingJsonContentType)`).
-   - **Save file:** If `(index, mime_type)` exists, call `filesystem::save_uploaded_file(config, field, mime_type, None)` to stream the field to disk. Store the resulting `UploadToken` in `files[index]`.
-   - **Read metadata:** If no position match, read the field bytes (`field.bytes().await`) and store as `metadata`.
+   - **Save file:** If `(index, mime_type)` exists, call `filesystem::save_uploaded_file(config, field, mime_type, Some(config.max_upload_size))` to stream the field to disk. The file part never loads fully into memory. Store the resulting `UploadToken` in `files[index]`. The per-file size cap comes from `config.max_upload_size`.
+   - **Read metadata:** If no position match, read the field in chunks (`field.chunk().await`). Track the running total; if it exceeds `MAX_METADATA_SIZE`, return `Err(ApiError::MetadataTooLarge(ByteSize(MAX_METADATA_SIZE)))`. Otherwise append each chunk to a byte vector and store it as `metadata`.
 3. Return `Body { files, metadata }`.
 
 ## Function: `get_mime_type(field: &Field) -> ApiResult<MimeType>`
@@ -144,8 +153,8 @@ This ensures the file extension and HTTP content type header agree when both are
 Verifies that the magic bytes at the start of the file match the claimed MIME type. This prevents MIME type spoofing.
 
 **Algorithm:**
-1. Read up to 12 bytes from the file (`std::fs::read`).
-2. Get the magic bytes slice: `&bytes[..min(12, bytes.len())]`.
+1. Open the file with `File::open`.
+2. Read up to 12 bytes into a fixed `[0u8; 12]` buffer (`file.read`). Only the bytes actually read (`&bytes[..bytes_read]`) are used.
 3. Check against known magic byte patterns:
 
 | MIME Type | Magic Bytes |

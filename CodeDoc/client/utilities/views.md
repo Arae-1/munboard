@@ -49,6 +49,8 @@ Returns a `<time>` element with `datetime` and `title` attributes, containing th
 
 Returns a `<span>` element with a thumbnail background image. If `url` is empty or null, adds the `"empty"` class. Contains a hidden `<img>` for accessibility.
 
+Before the URL enters the inline `background-image` style, the function escapes it: it replaces each backslash with two backslashes, and it replaces each single quote with a backslash followed by a single quote. This stops a malicious URL from breaking out of the `url('...')` style value and injecting CSS.
+
 ### `makeRadio(options)`
 
 Generates a labeled radio button. Options: `id`, `name`, `value`, `selectedValue`, `readonly`, `required`, `text`.

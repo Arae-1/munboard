@@ -87,6 +87,8 @@ Creates preview URL from browser File object via `URL.createObjectURL`.
 ### Url extends Uploadable
 Determines MIME type from URL file extension.
 
+The `previewUrl` getter returns the trimmed URL only when its scheme is `http`, `https`, or absent. For any other scheme (for example `javascript:`), it returns an empty string. This stops non-http URLs from rendering as clickable links.
+
 **Key methods**:
 - `addUploadables(uploadables)` — adds files/URLs to the upload list, skips duplicates
 - `removeUploadable(uploadable)` — removes a file/URL from the list

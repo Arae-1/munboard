@@ -163,7 +163,7 @@ Search tokens: `id`, `tag`, `tag-category`, `score`, `uploader`, `comment`, `fav
 | Snapshot | GET `/snapshots` | [snapshot.md](snapshot.md) |
 | Password Reset | GET `/password-reset/{id}` (request), POST `/password-reset/{id}` (confirm) | [password_reset.md](password_reset.md) |
 | Upload | POST `/uploads` | [upload.md](upload.md) |
-| User Token | GET/POST `/user-tokens/{username}`, PUT/DELETE `/user-token/{username}/{token}` | [user_token.md](user_token.md) |
+| User Token | GET/POST `/user-tokens/{username}`, PUT/DELETE `/user-token/{username}/{id}` | [user_token.md](user_token.md) |
 | Info | GET `/info` | [info.md](info.md) |
 | Legacy | GET `/legacy/redirect/{filename}` | [legacy.md](legacy.md) |
 

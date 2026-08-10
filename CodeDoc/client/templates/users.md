@@ -53,4 +53,12 @@ tags: [client, templates, users]
 ## `user_tokens.tpl`
 **Used by**: UserTokensView
 **Variables**: `ctx.tokens` (array), `ctx.makeRelativeTime`, `ctx.makeTextInput`, `ctx.makeDateInput`, `_` (underscore)
-**Structure**: Token list using flex layout. Each token shows token value, note (with change link), creation time, expiration time, last used time, and delete form (warns if it is current auth token). Create-token form at bottom with Note text input and Expires date input.
+**Structure**: Token list using flex layout. Each token has a labels column and a values column. The values column shows:
+- Internal id: first 8 characters plus an ellipsis, inside `<code class='token-id'>`; the full id is in the `title` attribute
+- Token value: shown only when `token.token` is present, inside `<code class='token-value'>` with escaped interpolation (`<%-`)
+- Note (with change link) — escaped with `<%-` when present
+- Creation time, expiration time ("No expiration" when absent), last used time
+- Status row: "Enabled" or "Disabled", with a `(toggle)` link
+- Delete form (warns if it is current auth token)
+
+The `data-token-id` attributes on the delete form, the note change link, and the toggle link carry the token's internal id, not the array index. Create-token form at bottom with Note text input and Expires date input.

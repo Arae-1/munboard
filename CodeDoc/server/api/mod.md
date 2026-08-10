@@ -33,6 +33,8 @@ This function builds the full API router. It merges 15 sub-routers in this order
 
 The OpenAPI spec is initialized from `ApiDoc::openapi()`.
 
+`post::routes`, `upload::routes` and `user::routes` receive `&state.config` so they can size their request-body limits from the configuration.
+
 ### Middleware Layers
 
 The router applies these layers in order (outermost first):
@@ -55,7 +57,7 @@ The router also sets:
 
 ### `RatingBody`
 
-**Location:** `mod.rs:87`
+**Location:** `mod.rs:88`
 
 Request body to apply or change a score.
 
@@ -67,7 +69,7 @@ Implements `Deref<Target = Rating>`.
 
 ### `DeleteBody`
 
-**Location:** `mod.rs:99`
+**Location:** `mod.rs:101`
 
 Request body for deleting a resource.
 
@@ -79,7 +81,7 @@ Implements `Deref<Target = DateTime>`.
 
 ### `MergeBody<T>`
 
-**Location:** `mod.rs:113`
+**Location:** `mod.rs:116`
 
 Request body for merging two resources.
 
@@ -94,7 +96,7 @@ Uses `#[serde(rename_all = "camelCase")]`.
 
 ### `ResourceParams<F>`
 
-**Location:** `mod.rs:127`
+**Location:** `mod.rs:130`
 
 Query parameters for retrieving one or more resources.
 
@@ -107,18 +109,32 @@ The `criteria()` method returns the query string or an empty string if `None`.
 
 ### `PageParams`
 
-**Location:** `mod.rs:144`
+**Location:** `mod.rs:147`
 
 Pagination query parameters for listing resources.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `offset` | `Option<i64>` | `None` (treated as 0) | Starting position |
-| `limit` | `NonZeroI64` | (required) | Maximum results to return |
+| `offset` | `Option<i64>` | `None` (treated as 0) | Starting position. Deserialized with `deserialize_non_negative_i64`: a negative value is a clean `400` at deserialization |
+| `limit` | `NonZeroI64` | (required) | Maximum results to return. Deserialized with `deserialize_positive_i64`: zero and negative values are a clean `400` at deserialization |
+
+Both fields are validated at deserialization, so invalid values produce a clean `400` instead of an internal database error.
+
+### `deserialize_positive_i64`
+
+**Location:** `mod.rs:160`
+
+Deserializes `limit` as a positive integer. `NonZeroI64` alone would accept negative values, which fail later with an internal database error. The deserializer rejects values that are zero or negative with an `invalid_value` error.
+
+### `deserialize_non_negative_i64`
+
+**Location:** `mod.rs:173`
+
+Deserializes `offset` as a non-negative integer. Absent values remain `None`. A negative value produces an `invalid_value` error.
 
 ### `PagedResponse<T>`
 
-**Location:** `mod.rs:162`
+**Location:** `mod.rs:195`
 
 A paged search result.
 
@@ -132,7 +148,7 @@ A paged search result.
 
 ### `UnpagedResponse<T>`
 
-**Location:** `mod.rs:157`
+**Location:** `mod.rs:189`
 
 A search result without paging.
 
@@ -146,32 +162,40 @@ A search result without paging.
 
 ### `verify_privilege(client, required_rank) -> ApiResult<()>`
 
-**Location:** `mod.rs:181`
+**Location:** `mod.rs:213`
 
 Checks if `client.rank >= required_rank`. Returns `ApiError::InsufficientPrivileges` if the check fails.
 
+### `DISABLE_VERSION_CHECK_ENV`
+
+**Location:** `mod.rs:225`
+
+`pub(crate) const DISABLE_VERSION_CHECK_ENV: &str = "OXIBOORU_DISABLE_VERSION_CHECK"`.
+
+The environment variable that disables the concurrent-edit (version) check. The check is enabled by default. Setting this variable to any value (for example `OXIBOORU_DISABLE_VERSION_CHECK=1`) disables it at runtime. This is intended for automated tests and one-off maintenance scripts that deliberately operate on stale versions.
+
 ### `verify_version(current_version, client_version) -> ApiResult<()>`
 
-**Location:** `mod.rs:189`
+**Location:** `mod.rs:229`
 
 Checks if `current_version == client_version`. Returns `ApiError::ResourceModified` if they differ.
-This check is **disabled** in test builds (`cfg!(test)`).
+This check is **disabled** at runtime when the `OXIBOORU_DISABLE_VERSION_CHECK` environment variable is set (checked with `std::env::var_os`). In release builds, disabling the check logs a one-time warning so a production misconfiguration is visible in logs. Test builds skip the warning because the test harness sets the variable deliberately.
 
 ### `verify_matches_regex(config, haystack, regex_type) -> ApiResult<()>`
 
-**Location:** `mod.rs:68`
+**Location:** `mod.rs:69`
 
 Checks if `haystack` matches the configured regex of type `regex_type`. Returns `ApiError::ExpressionFailsRegex` if the check fails.
 
 ### `verify_valid_email(email) -> Result<()>`
 
-**Location:** `mod.rs:78`
+**Location:** `mod.rs:79`
 
 Parses an optional email string with `lettre::Address`. Returns `Ok` if `None` or if it is a valid address. Returns `lettre::address::AddressError` on failure.
 
 ### `deserialize_some<'de, T, D>(deserializer) -> Result<Option<T>>`
 
-**Location:** `mod.rs:201`
+**Location:** `mod.rs:249`
 
 A custom serde deserializer. Any present value (including `null`) becomes `Some(value)`. Only absent fields become `None`. This allows clients to send `null` to clear fields.
 

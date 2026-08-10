@@ -10,11 +10,11 @@ This module defines all user-related HTTP endpoints. It handles CRUD operations,
 
 ## Router Registration
 
-### `routes() -> OpenApiRouter<AppState>`
+### `routes(config: &Config) -> OpenApiRouter<AppState>`
 
 **Location:** `user.rs:32`
 
-Returns a router with these endpoints:
+Takes the server configuration. Returns a router with these endpoints:
 
 | Method | Path | Handler |
 |--------|------|---------|
@@ -118,7 +118,7 @@ Returns a router with these endpoints:
 
 ### 3. `POST /users` — Create a User
 
-**Handler:** `create` at `user.rs:320`
+**Handler:** `create` at `user.rs:341`
 
 **Accepts:** `application/json` or `multipart/form-data`
 
@@ -165,7 +165,10 @@ Returns a router with these endpoints:
 6. Validate password against `RegexType::Password`.
 7. Validate email against `lettre::Address`.
 8. Generate an Argon2 password hash with a random salt.
-9. Process avatar: if `avatarStyle == Manual`, a custom avatar is required. If provided, process via `Content::thumbnail(ThumbnailType::Avatar)`.
+9. Process avatar: if `avatarStyle == Manual`, a custom avatar is required. If provided, verify privileges before any download:
+   - Verify the avatar edit privilege first (`UserEditSelfAvatar` when creating self, `UserEditAnyAvatar` otherwise).
+   - If the avatar comes from a URL (`avatarUrl`), additionally verify `Action::UploadUseDownloader`. Token-based avatars need only the avatar privilege.
+   - Only then process via `Content::thumbnail(ThumbnailType::Avatar)`.
 10. Open a database transaction.
 11. Check if the username already exists. If so, return `ApiError::AlreadyExists(UserName)`.
 12. Get the current user count. If 0, the first user becomes `Administrator`. Otherwise, use the provided rank or `config.default_rank()`.
@@ -175,16 +178,19 @@ Returns a router with these endpoints:
 16. After the first transaction, load `UserInfo` with `Visibility::Full` and return as JSON.
 
 **Multipart Handling:**
-1. Extract `PartName::Avatar` from the multipart body.
-2. If metadata is missing, return `ApiError::MissingMetadata`.
-3. Deserialize the metadata JSON into `UserCreateBody`.
-4. If an avatar file was uploaded, set `avatar_token` on the body.
+1. Verify `Action::UserCreateSelf` privilege before extracting the upload.
+2. Extract `PartName::Avatar` from the multipart body.
+3. If metadata is missing, return `ApiError::MissingMetadata`.
+4. Deserialize the metadata JSON into `UserCreateBody`.
+5. If an avatar file was uploaded, set `avatar_token` on the body.
+
+**Note:** Registration is anonymous, so the `UserCreateSelf` check in the multipart arm only documents intent. The avatar file itself is still gated later in `create_impl`. A self-create avatar upload that fails that gate leaves a temp file bounded by the size cap and drained by the 10-minute sweep.
 
 ---
 
 ### 4. `PUT /user/{name}` — Update a User
 
-**Handler:** `update` at `user.rs:538`
+**Handler:** `update` at `user.rs:603`
 
 **Accepts:** `application/json` or `multipart/form-data`
 
@@ -228,13 +234,17 @@ Returns a router with these endpoints:
 - `422` — Username, password, email, or rank invalid
 
 **Handler Logic (update_impl):**
-1. If a custom avatar is provided or `avatarStyle == Some(Manual)`, process the avatar.
+1. If a custom avatar is provided or `avatarStyle == Some(Manual)`, process the avatar:
+   - Resolve the target user's ID by name. Return `NotFound` if absent.
+   - Verify the avatar edit privilege before any download (`UserEditSelfAvatar` if `ctx.client.id == Some(user_id)`, `UserEditAnyAvatar` otherwise).
+   - If the avatar comes from a URL (`avatarUrl`), additionally verify `Action::UploadUseDownloader`. Token-based avatars need only the avatar privilege.
+   - Only then process via `Content::thumbnail(ThumbnailType::Avatar)`.
 2. Open a database transaction.
 3. Load the existing user by name. Return `NotFound` if absent.
 4. Verify version.
 5. Determine if editing self (`ctx.client.id == Some(user_id)`). Set visibility accordingly.
 6. For each provided field:
-   - **password:** If editing self, requires `UserEditSelfPass`. If editing another, requires `UserEditAnyPass`. Validate against password regex. Generate new salt and hash. Update `user::table`.
+   - **password:** If editing self, requires `UserEditSelfPass`. If editing another, requires `UserEditAnyPass`. Validate against password regex. Generate new salt and hash. Update `user::table`. Revoke all of the user's API tokens (`diesel::delete(user_token::table.filter(user_token::user_id.eq(user_id)))`) so a stolen token does not survive a password change.
    - **email:** If editing self, requires `UserEditSelfEmail`. If editing another, requires `UserEditAnyEmail`. Validate email. Update `user::table`, mapping unique violation to `ResourceProperty::UserEmail`.
    - **rank:** If `Anonymous`, return `InvalidUserRank`. If editing self, requires `UserEditSelfRank`. If editing another, requires `UserEditAnyRank`. If new rank exceeds `config.default_rank()`, verify the client's privilege for that rank. Update `user::table`.
    - **avatar_style:** If editing self, requires `UserEditSelfAvatar`. If editing another, requires `UserEditAnyAvatar`. Update `user::table`.
@@ -245,6 +255,15 @@ Returns a router with these endpoints:
 9. Record a `modification_snapshot` with old and new user data.
 10. Return `(user_id, visibility)`.
 11. After the first transaction, load `UserInfo` and return as JSON.
+
+**Multipart Handling:**
+1. Verify `Action::UserEditSelfAvatar` privilege before extracting the upload, so clients lacking the avatar-edit privilege are rejected before the temporary upload is written to disk.
+2. Extract `PartName::Avatar` from the multipart body.
+3. If metadata is missing, return `ApiError::MissingMetadata`.
+4. Deserialize the metadata JSON into `UserUpdateBody`.
+5. If an avatar file was uploaded, set `avatar_token` on the body.
+
+Per-field checks still run in `update_impl` afterwards.
 
 **Privilege Matrix for Updates:**
 
@@ -261,7 +280,7 @@ Returns a router with these endpoints:
 
 ### 5. `DELETE /user/{name}` — Delete a User
 
-**Handler:** `delete` at `user.rs:576`
+**Handler:** `delete` at `user.rs:646`
 
 **Authentication:** If deleting self, requires `Action::UserDeleteSelf`. If deleting another, requires `Action::UserDeleteAny`.
 
@@ -290,9 +309,10 @@ Returns a router with these endpoints:
 3. Verify version.
 4. Determine if deleting self. Select action: `UserDeleteSelf` or `UserDeleteAny`.
 5. Verify the action privilege.
-6. Delete the user from `user::table`.
-7. Record a `deletion_snapshot`.
-8. Return `Json(())`.
+6. Record the `deletion_snapshot` BEFORE deleting the row. On self-delete the actor IS the deleted user, so inserting the snapshot afterwards would violate the `snapshot.user_id` foreign key.
+7. Delete the user from `user::table`.
+8. Delete the custom avatar file with `filesystem::delete_custom_avatar`. Cleanup errors are only logged; a leftover file must not fail the account deletion.
+9. Return `Json(())`.
 
 ---
 

@@ -15,6 +15,7 @@ This file is the binary entry point of the Oxibooru server. It declares all modu
 | `config` | Configuration loading |
 | `content` | Media content processing |
 | `db` | Database connection pool and migrations |
+| `embed` | OpenGraph embed pages for post links |
 | `error` | Error kind mapping trait |
 | `extract` | Axum request extractor wrappers |
 | `filesystem` | File operations for media storage |

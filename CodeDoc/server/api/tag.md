@@ -270,6 +270,7 @@ fn verify_visibility(conn, ctx, tag_name) -> ApiResult<i64>
 - `404` — Source or target tag does not exist
 - `409` — Version outdated
 - `422` — Source equals target (`ApiError::SelfMerge`)
+- `422` — Merge would close an implication cycle (`ApiError::CyclicDependency`)
 
 **Handler Logic:**
 1. Verify `Action::TagMerge` privilege.
@@ -279,7 +280,7 @@ fn verify_visibility(conn, ctx, tag_name) -> ApiResult<i64>
 5. Look up the target tag. Return `NotFound` if absent.
 6. If IDs are equal, return `ApiError::SelfMerge`.
 7. Verify versions of both tags.
-8. Call `update::tag::merge` to merge usages, suggestions, and implications from source to target.
+8. Call `update::tag::merge` to merge usages, suggestions, and implications from source to target. The merge rejects the operation before any table write if it would close an implication cycle.
 9. Record a `merge_snapshot`.
 10. After the first transaction, load `TagInfo` for the merged target tag and return as JSON.
 

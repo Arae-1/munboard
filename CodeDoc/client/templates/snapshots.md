@@ -17,3 +17,5 @@ tags: [client, templates, snapshots]
   - `created` — calls `makeItemCreation(type, data)` with the stored data
   - `modified` — calls `makeItemModification(type, data)` with diff data
   - `merged` — shows "Merged to" with resource link
+
+The operation type uses escaped interpolation (`<%-`) in both the CSS class and the visible text. The header class becomes `operation-<operation>` with the escaped value.

@@ -10,7 +10,7 @@ This module defines all post-related HTTP endpoints. It handles CRUD operations,
 
 ## Router Registration
 
-### `routes() -> OpenApiRouter<AppState>`
+### `routes(config: &Config) -> OpenApiRouter<AppState>`
 
 **Location:** `post.rs:42`
 
@@ -32,7 +32,7 @@ Returns a router with these endpoints:
 | `PUT` | `/post/{id}` | `update` |
 | `DELETE` | `/post/{id}` | `delete` |
 
-The `reverse_search`, `create`, and `update` routes use a `DefaultBodyLimit::max(config.max_multipart_body_size())` layer for the total request body; individual files are limited to `config.max_upload_size` by the multipart streaming code.
+The `reverse_search`, `create`, and `update` routes use a `DefaultBodyLimit::max(config.max_multipart_body_size())` layer for the total request body. `config.max_multipart_body_size()` is `2 * config.max_upload_size + 2 MiB`. Individual files are limited to `config.max_upload_size` by the multipart streaming code.
 
 ---
 
@@ -61,7 +61,7 @@ If `tags_updated` is `true`, it acquires the `POST_TAG_MUTEX` lock. Then it runs
 
 ## Helper: `verify_visibility`
 
-**Location:** `post.rs:1330`
+**Location:** `post.rs:1359`
 
 ```rust
 fn verify_visibility(conn, ctx, post_id) -> ApiResult<()>
@@ -88,8 +88,8 @@ fn verify_visibility(conn, ctx, post_id) -> ApiResult<()>
 |-----------|------|-------------|
 | `query` | `Option<String>` | Search query with named tokens, sort tokens, and special tokens |
 | `fields` | `Mask<Field>` | Comma-separated field selection |
-| `offset` | `Option<i64>` | Starting position (default: 0) |
-| `limit` | `NonZeroI64` | Maximum results (capped at 1000) |
+| `offset` | `Option<i64>` | Starting position (default: 0). Must be non-negative; a negative value fails deserialization with a clean 400. |
+| `limit` | `NonZeroI64` | Maximum results (capped at 1000). Must be a positive integer; a zero or negative value fails deserialization with a clean 400 instead of an internal database error. |
 
 **Search Tokens (Named):**
 
@@ -134,6 +134,7 @@ fn verify_visibility(conn, ctx, post_id) -> ApiResult<()>
 **Successful Response:** `200` with `PagedResponse<PostInfo>`
 
 **Error Responses:**
+- `400` — Invalid `limit` or `offset` (negative or zero values)
 - `403` — Privileges too low
 
 **Handler Logic:**
@@ -225,11 +226,13 @@ fn verify_visibility(conn, ctx, post_id) -> ApiResult<()>
    - Batch-load `PostInfo` for both IDs.
    - Arrange results: if both found, first=prev, second=next; if one found and `has_previous_post`, return as prev; otherwise return as next.
 6. **If sort order is specified (general path):**
-   - Start with `offset = 0`, `limit = 1000`.
+   - Constants: `INITIAL_LIMIT = 1000`, `LIMIT_GROWTH = 10`, `MAX_NEIGHBOR_LIMIT = 20000`.
+   - Start with `offset = 0`, `limit = INITIAL_LIMIT` (1000).
    - Loop: load post IDs with current offset/limit.
    - Find the position of `post_id` in the batch.
-   - If batch is smaller than the limit, or limit is `i64::MAX`, or batch is `usize::MAX`, or the post is found (and not at the last position): break the loop.
-   - Otherwise: increase offset by `limit - 2`, multiply limit by 10.
+   - Break the loop if the batch is smaller than the limit, or `limit >= MAX_NEIGHBOR_LIMIT` (20000), or the batch is `usize::MAX`, or the post is found (and not at the last position).
+   - Otherwise: increase offset by `limit - 2`, grow the limit by `limit = limit.saturating_mul(LIMIT_GROWTH).min(MAX_NEIGHBOR_LIMIT)` (multiply by 10, capped at 20000).
+   - `MAX_NEIGHBOR_LIMIT` stops the search window from growing beyond 20000 rows, so a single request cannot scan the whole result set.
    - Get prev/next post IDs from positions around the found post.
    - Batch-load `PostInfo` for both IDs.
 7. Return `PostNeighbors` as JSON.
@@ -238,7 +241,7 @@ fn verify_visibility(conn, ctx, post_id) -> ApiResult<()>
 
 ### 4. `GET /featured-post` — Get Currently Featured Post
 
-**Handler:** `get_featured` at `post.rs:373`
+**Handler:** `get_featured` at `post.rs:376`
 
 **Authentication:** Requires `Action::PostViewFeatured`.
 
@@ -267,7 +270,7 @@ fn verify_visibility(conn, ctx, post_id) -> ApiResult<()>
 
 ### 5. `POST /featured-post` — Feature a Post
 
-**Handler:** `feature` at `post.rs:421`
+**Handler:** `feature` at `post.rs:424`
 
 **Authentication:** Requires `Action::PostFeature`. User must be logged in.
 
@@ -306,7 +309,7 @@ fn verify_visibility(conn, ctx, post_id) -> ApiResult<()>
 
 ### 6. `POST /posts/reverse-search` — Reverse Image Search
 
-**Handler:** `reverse_search` at `post.rs:565`
+**Handler:** `reverse_search` at `post.rs:573`
 
 **Accepts:** `application/json` or `multipart/form-data`
 
@@ -350,6 +353,7 @@ fn verify_visibility(conn, ctx, post_id) -> ApiResult<()>
 3. **If multipart:** extract upload parts (Content). If a content token is present, build the body from it. If metadata is present, deserialize from JSON. Otherwise, return `ApiError::MissingFormData`.
 4. **`reverse_search_impl`:**
    - Verify `Action::PostReverseSearch`.
+   - If `content_url` is present: verify `Action::UploadUseDownloader`. Downloading from a URL is gated by the downloader privilege, checked before any network fetch.
    - Create a `Content` object from token or URL.
    - Compute content properties (checksum, signature, etc.).
    - Open a database transaction.
@@ -364,7 +368,7 @@ fn verify_visibility(conn, ctx, post_id) -> ApiResult<()>
 
 ### 7. `POST /posts` — Create a Post
 
-**Handler:** `create` at `post.rs:764`
+**Handler:** `create` at `post.rs:779`
 
 **Accepts:** `application/json` or `multipart/form-data`
 
@@ -408,12 +412,13 @@ fn verify_visibility(conn, ctx, post_id) -> ApiResult<()>
 **Handler Logic (create_impl):**
 1. Determine action: `PostCreateAnonymous` if `anonymous == Some(true)`, else `PostCreateIdentified`.
 2. Verify privilege for the action.
-3. Create `Content` from token or URL. Return `MissingContent` if neither is provided.
-4. Compute content properties (call `get_or_compute_properties`).
-5. If a custom thumbnail is provided, process it via `Content::thumbnail`.
-6. Combine content flags with user-provided flags.
-7. Call `tagging_update` with `tags_updated = body.tags.is_some()`.
-8. **Inside the transaction:**
+3. **If `content_url` or `thumbnail_url` is present:** verify `Action::PostCreateIdentified` and `Action::UploadUseDownloader`. URL downloads require the downloader power and an identified uploader. The check happens before `Content::new` performs any network fetch.
+4. Create `Content` from token or URL. Return `MissingContent` if neither is provided.
+5. Compute content properties (call `get_or_compute_properties`).
+6. If a custom thumbnail is provided, process it via `Content::thumbnail`.
+7. Combine content flags with user-provided flags.
+8. Call `tagging_update` with `tags_updated = body.tags.is_some()`.
+9. **Inside the transaction:**
    - Resolve or create tag IDs using `update::tag::get_or_create_tag_ids` (`FetchMode::Deep`).
    - Insert `NewPost` into `post::table` with `ON CONFLICT (checksum) DO NOTHING`. If the row already existed, return `ApiError::AlreadyExists(ResourceProperty::PostContent)`.
    - Generate a `PostHash` for the new post ID.
@@ -426,13 +431,15 @@ fn verify_visibility(conn, ctx, post_id) -> ApiResult<()>
    - If custom thumbnail exists, verify `PostEditThumbnail` privilege and create custom thumbnail.
    - Record a creation snapshot with all post data (safety, checksum, flags, source, description, dates, tags, relations, notes, custom fields).
    - Return the new post ID.
-9. After committing, load `PostInfo` from the new post ID and return as JSON.
+10. After committing, load `PostInfo` from the new post ID and return as JSON.
+
+**Multipart branch:** The `create` handler verifies `Action::PostCreateIdentified` BEFORE calling `upload::extract`. This prevents anonymous clients from writing temporary files to disk. The extracted file parts become the `contentToken` and `thumbnailToken` of the body passed to `create_impl`.
 
 ---
 
 ### 8. `POST /post-merge` — Merge Posts
 
-**Handler:** `merge` at `post.rs:817`
+**Handler:** `merge` at `post.rs:834`
 
 **Authentication:** Requires `Action::PostMerge`.
 
@@ -477,7 +484,7 @@ fn verify_visibility(conn, ctx, post_id) -> ApiResult<()>
 
 ### 9. `POST /post/{id}/favorite` — Add Favorite
 
-**Handler:** `favorite` at `post.rs:873`
+**Handler:** `favorite` at `post.rs:890`
 
 **Authentication:** Requires `Action::PostFavorite`. User must be logged in.
 
@@ -513,7 +520,7 @@ fn verify_visibility(conn, ctx, post_id) -> ApiResult<()>
 
 ### 10. `DELETE /post/{id}/favorite` — Remove Favorite
 
-**Handler:** `unfavorite` at `post.rs:1311`
+**Handler:** `unfavorite` at `post.rs:1340`
 
 **Authentication:** Requires `Action::PostFavorite`. User must be logged in.
 
@@ -546,7 +553,7 @@ fn verify_visibility(conn, ctx, post_id) -> ApiResult<()>
 
 ### 11. `PUT /post/{id}/score` — Rate a Post
 
-**Handler:** `rate` at `post.rs:917`
+**Handler:** `rate` at `post.rs:934`
 
 **Authentication:** Requires `Action::PostScore`. User must be logged in.
 
@@ -589,7 +596,7 @@ fn verify_visibility(conn, ctx, post_id) -> ApiResult<()>
 
 ### 12. `PUT /post/{id}` — Update a Post
 
-**Handler:** `update` at `post.rs:1211`
+**Handler:** `update` at `post.rs:1240`
 
 **Accepts:** `application/json` or `multipart/form-data`
 
@@ -638,10 +645,14 @@ fn verify_visibility(conn, ctx, post_id) -> ApiResult<()>
 - `422` — Invalid tag name, safety, notes, or flags
 
 **Handler Logic (update_impl):**
-1. If new content provided, compute content properties.
-2. If new custom thumbnail provided, process thumbnail.
-3. Call `tagging_update` with `tags_updated = body.tags.is_some()`.
-4. **Inside the transaction:**
+1. **URL download authorization (before any network fetch):**
+   - If `content_url` is present: verify `Action::PostEditContent` and `Action::UploadUseDownloader`.
+   - If `thumbnail_url` is present: verify `Action::PostEditThumbnail` and `Action::UploadUseDownloader`.
+   - These checks reject unauthorized callers before `Content::new` downloads anything. The in-transaction checks below remain as defense-in-depth.
+2. If new content provided, compute content properties.
+3. If new custom thumbnail provided, process thumbnail.
+4. Call `tagging_update` with `tags_updated = body.tags.is_some()`.
+5. **Inside the transaction:**
    - Load the existing post. Return `NotFound` if absent.
    - Verify version matches.
    - Retrieve old snapshot data.
@@ -671,13 +682,13 @@ fn verify_visibility(conn, ctx, post_id) -> ApiResult<()>
    - Set `last_edit_time` to `DateTime::now()`.
    - Save the updated post via `save_changes`. Map unique violation (post content checksum).
    - Record a `modification_snapshot` with old and new snapshot data.
-5. After committing, load `PostInfo` and return as JSON.
+6. After committing, load `PostInfo` and return as JSON.
 
 ---
 
 ### 13. `DELETE /post/{id}` — Delete a Post
 
-**Handler:** `delete` at `post.rs:1250`
+**Handler:** `delete` at `post.rs:1279`
 
 **Authentication:** Requires `Action::PostDelete`.
 

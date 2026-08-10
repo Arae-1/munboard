@@ -11,7 +11,7 @@
 |---|---|---|
 | `note` | custom string | A note/label describing the purpose of the token |
 | `enabled` | `bool` | Whether the token is currently active/enabled |
-| `expiration_time` | `Option<DateTime>` | When the token expires, or `None` if it never expires |
+| `expiration_time` | `Option<DateTime>` | When the token expires. `DateTime` serializes as an RFC 3339 timestamp string. Tokens created through the API always carry an expiration (a 30-day default when none is given), so creation snapshots record a timestamp, never `null` |
 
 Fields are serialized via inline `json!({...})` in the private `snapshot_data` function.
 
@@ -29,6 +29,8 @@ Inserts a `NewSnapshot` with:
 - `operation` = `ResourceOperation::Created`
 - `resource_id` = `user_token.id.to_string()` (the numeric ID as string)
 - `data` = full snapshot data (note, enabled, expiration_time)
+
+The API create handler gives tokens without an explicit expiration a default lifetime of 30 days. The snapshot therefore records `expiration_time` as an RFC 3339 timestamp, never `null`.
 
 ### `modification_snapshot(conn, client, old, new)`
 

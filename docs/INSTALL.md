@@ -32,8 +32,15 @@ This guide assumes that you have Docker (version 19.03 or greater) and the Docke
 
     - password_secret
     - content_secret
+    - token_encryption_secret
 
-    Any fields not present will default to their corresponding value in the original `config.toml.dist`, so feel free to remove fields that are uneeded or irrelevant.
+    The server refuses to start when `password_secret`, `content_secret`, or
+    `token_encryption_secret` is empty or still set to the placeholder value
+    `"change"`. `token_encryption_secret` must be 64 hexadecimal characters
+    (32 bytes). It is the AES-256-GCM key that the server uses to encrypt user
+    tokens at rest.
+
+    Any fields not present will default to their corresponding value in the original `config.toml.dist`, so feel free to remove fields that are uneeded or irrelevant. The three secrets above are an exception: keep them in your config and set each to a unique value.
 
 3. **Configure Docker Compose**
 
@@ -77,6 +84,31 @@ This guide assumes that you have Docker (version 19.03 or greater) and the Docke
     docker compose logs -f
     # (CTRL+C to exit)
     ```
+
+## Configuration
+
+The server reads `server/config.toml`. The important settings are:
+
+| Key | Default | Description |
+| --- | ------- | ----------- |
+| `password_secret` | `"change"` (refused) | Salt for the users' password hashes. The server refuses to start when this is empty or `"change"`. |
+| `content_secret` | `"change"` (refused) | Secret used to generate filenames for static content. The server refuses to start when this is empty or `"change"`. |
+| `token_encryption_secret` | `"change"` (refused) | AES-256-GCM key used to encrypt user tokens at rest. Must be 64 hexadecimal characters (32 bytes). The server refuses to start when this is empty, `"change"`, or not 64 hexadecimal characters. |
+| `max_upload_size` | `4294967296` (4 GiB) | Maximum size in bytes of files uploaded directly via multipart. |
+| `max_url_download_size` | `4294967296` (4 GiB) | Maximum size in bytes of files downloaded from a URL. |
+| `rate_limit_max_failures` | `20` | Maximum number of failed basic-auth attempts per username within `rate_limit_window_secs` before further attempts are rejected with `429`. |
+| `rate_limit_window_secs` | `60` | Length of the failed-login sliding window, in seconds. |
+| `secure_cookie` | `true` | Set the auth cookie's `secure` flag so the cookie is only sent over HTTPS. |
+| `password_regex` | `^.{8,}$` | Regular expression that a new password must match. Set under `[public_info]`. |
+
+## Reverse proxy (nginx)
+
+The example configuration in `client/nginx.conf.docker` applies the following security defaults. The server itself does not serve HTTP; an nginx (or similar) reverse proxy in front of it must implement them.
+
+- Security headers are sent on every response, including error responses: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, a starting-point `Content-Security-Policy`, and `Strict-Transport-Security` when the request arrived over HTTPS.
+- The API documentation at `/docs` and `/apidoc` is private by default. Only the loopback interface and private network ranges (`127.0.0.1`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) may access it; all other clients receive `403`.
+- Requests to `/data/temporary-uploads/` always receive `403`. The temporary upload staging files are internal only and must never be public.
+- CORS is same-origin only. nginx mirrors the request's `Origin` header back only when the origin matches the `Host` header the browser used. There is no wildcard `Access-Control-Allow-Origin`. The bundled client is served from the same origin and does not need the header.
 
 ## Versioning
 

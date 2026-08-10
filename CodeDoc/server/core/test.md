@@ -34,6 +34,8 @@ Gets a blocking database connection from the test pool. Delegates to `get_state(
 
 Gets the singleton test `AppState`. Lazily creates the test database on first call. Uses a static `Mutex<Option<AppState>>` so the database is created once and reused across tests.
 
+Before returning the state, it calls `disable_version_check()` so the `OXIBOORU_DISABLE_VERSION_CHECK` environment variable is set before any handler can run.
+
 ### `reset_database()`
 
 Resets the singleton test state by setting it to `None`. The next call to `get_state()` will recreate the database and re-populate it.
@@ -101,12 +103,17 @@ Five test users with different ranks:
 
 All users share `TEST_HASH`, `TEST_SALT`, and `AvatarStyle::Gravatar`.
 
-### `USER_TOKENS: &[NewUserToken]`
+### `create_user_tokens(conn, config)`
 
-Three test tokens:
+A function (not a constant) that seeds the three test tokens. Each token row stores both the BLAKE3 hash and an AES-256-GCM ciphertext of the token value, matching the test config's encryption key (`config.token_encryption_key()`).
+
+The three tokens:
+
 1. `TEST_TOKEN` — Enabled, belongs to administrator (user_id: 5), no expiration
 2. `EXPIRED_TOKEN` — Enabled, belongs to regular_user (user_id: 2), expired at test_date
 3. `DISABLED_TOKEN` — Disabled, belongs to regular_user (user_id: 2), no expiration
+
+For each token it inserts the `id`, `user_id`, `note`, `enabled`, `expiration_time`, `token_hash` (`header::hash_token_hex`) and `token_secret` (`token_crypto::encrypt_blob`).
 
 ### Pool Data
 
@@ -287,7 +294,11 @@ Inserts the test posts and sets up their filesystem data:
 ### `populate_database(conn, config)`
 
 Orchestrates all database population in order:
-1. Users → 2. User tokens → 3. Tag categories → 4. Tags → 5. Pool categories → 6. Pools → 7. Posts → 8. Post relations → 9. Post tags → 10. Pool posts → 11. Post favorites → 12. Post features → 13. Post scores → 14. Post notes → 15. Comments → 16. Comment scores
+1. Users → 2. User tokens (`create_user_tokens(conn, config)`) → 3. Tag categories → 4. Tags → 5. Pool categories → 6. Pools → 7. Posts → 8. Post relations → 9. Post tags → 10. Pool posts → 11. Post favorites → 12. Post features → 13. Post scores → 14. Post notes → 15. Comments → 16. Comment scores
+
+### `disable_version_check()`
+
+Disables the concurrent-edit (version) check for the whole test run. The check is controlled at runtime by the `OXIBOORU_DISABLE_VERSION_CHECK` environment variable (see `crate::api::DISABLE_VERSION_CHECK_ENV`). Every test builds its app state through `get_state`, so this single call guarantees the variable is set before any handler can run. A `LazyLock` keeps the call idempotent: the environment variable is set at most once, from the first `get_state()` call.
 
 ### `asset_path(folder_path, relative_path) -> PathBuf`
 

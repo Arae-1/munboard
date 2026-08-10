@@ -75,16 +75,20 @@ Listens to user `change` event.
 
 **Template**: `user-tokens`
 
-**Purpose**: Lists user authentication tokens and provides token creation/deletion.
+**Purpose**: Lists user authentication tokens and provides token creation, deletion, note editing, and enabled-state toggling.
 
 **Constructor** (`ctx`):
 - `ctx.user` — User model
 - `ctx.tokens` — array of token objects
 
+**Key methods**:
+- `_tokenById(id)` — finds a token in `_tokens` by its internal id
+- `_decorateTokenToggleLinks()` — binds each `(toggle)` link; clicking dispatches `update` with `enabled: !userToken.enabled`
+
 **Events dispatched**:
 - `submit` / `create-token` — on create token form (note, expirationTime)
 - `delete` / `delete-token` — on token delete (userToken)
-- `update` / `update-token` — on token note change (userToken, note)
+- `update` / `update-token` — on token note change (userToken, note) or enabled-state toggle (userToken, enabled)
 
 ---
 
