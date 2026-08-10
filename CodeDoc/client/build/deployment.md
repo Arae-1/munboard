@@ -66,8 +66,8 @@ Sent on every response from the server block, and repeated in the `/api/` locati
 - `X-Frame-Options: DENY`
 - `Referrer-Policy: strict-origin-when-cross-origin`
 - `Strict-Transport-Security`: value comes from the `$hsts_header` map. The map sends `max-age=31536000; includeSubDomains` only when `X-Forwarded-Proto` is `https`; otherwise it sends an empty value. This keeps HSTS off for plain-HTTP requests
-- `Content-Security-Policy`: `default-src 'self'; script-src 'self' https://unpkg.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`
-  - Scripts load from `'self'`, unpkg.com (Ruffle Flash emulator), and static.cloudflareinsights.com (Cloudflare Web Analytics beacon)
+- `Content-Security-Policy`: `default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`
+  - Scripts load from `'self'` and static.cloudflareinsights.com (Cloudflare Web Analytics beacon)
   - `style-src 'unsafe-inline'` because the client injects `<style>` rules at runtime
   - `connect-src` allows the WebSocket the client opens on port 8081
   - `img-src https:` allows gravatar/external avatar images

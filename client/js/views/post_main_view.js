@@ -51,7 +51,7 @@ class PostMainView {
             ctx.post
         );
 
-        if (ctx.post.type === "video" || ctx.post.type === "flash" || ctx.post.type === "document") {
+        if (ctx.post.type === "video" || ctx.post.type === "document") {
             this._postContentControl.disableOverlay();
         }
 

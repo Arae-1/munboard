@@ -83,9 +83,9 @@ by prepending them with a backslash: <code>\\</code>.</p>
 
 <p>Searching for posts with following query:</p>
 
-<pre><code>sea -fav-count:8.. type:swf uploader:Pirate</code></pre>
+<pre><code>sea -fav-count:8.. type:animation uploader:Pirate</code></pre>
 
-<p>will show flash files tagged as sea, that were liked by seven people at
+<p>will show animated images tagged as sea, that were liked by seven people at
 most, uploaded by user Pirate.</p>
 
 <p>Searching for posts with <code>re:zero</code> will show an error message

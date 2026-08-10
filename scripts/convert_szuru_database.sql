@@ -252,12 +252,13 @@ ALTER TABLE public."post"
 ALTER COLUMN "safety" TYPE SMALLINT USING "safety"::SMALLINT;
 
 -- Post types in Oxibooru are represented by SMALLINT so we have to convert
+-- Flash posts are not supported by Oxibooru and are deleted.
+DELETE FROM public."post" WHERE "type" = 'flash';
 UPDATE public."post"
 SET "type" = CASE
     WHEN "type" = 'image' THEN 0
     WHEN "type" = 'animation' THEN 1
     WHEN "type" = 'video' THEN 2
-    WHEN "type" = 'flash' THEN 3
 END;
 ALTER TABLE public."post"
 ALTER COLUMN "type" TYPE SMALLINT USING "type"::SMALLINT;
@@ -273,8 +274,7 @@ SET "mime-type" = CASE
     WHEN "mime-type" = 'video/mp4' THEN 5
     WHEN "mime-type" = 'video/quicktime' THEN 6
     WHEN "mime-type" = 'video/webm' THEN 7
-    WHEN "mime-type" = 'application/x-shockwave-flash' THEN 8
-    WHEN "mime-type" = 'image/avif' THEN 9
+    WHEN "mime-type" = 'image/avif' THEN 8
 END;
 ALTER TABLE public."post"
 ALTER COLUMN "mime-type" TYPE SMALLINT USING "mime-type"::SMALLINT;

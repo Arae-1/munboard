@@ -43,7 +43,6 @@ pub enum ErrorName {
     EmailMissingTo,
     EmailNonAsciiChars,
     EmailTooManyFrom,
-    EmptySwf,
     EmptyValue,
     EmptyVideo,
     EnvironmentVariableNotPresent,
@@ -113,6 +112,7 @@ pub enum ErrorName {
     MissingPathParams,
     MissingSmtpInfo,
     MultipartError,
+    NegativeCustomFieldValue,
     NegativeOverflow,
     NetworkDown,
     NetworkUnreachable,
@@ -163,11 +163,6 @@ pub enum ErrorName {
     SerializationFailure,
     StaleNetworkFileHandle,
     StorageFull,
-    SwfAvm1ParseError,
-    SwfInvalidData,
-    SwfIoError,
-    SwfParseError,
-    SwfUnsupported,
     TagCategoryNameAlreadyExists,
     TagCategoryNotFound,
     TagNameAlreadyExists,
@@ -602,18 +597,6 @@ impl ErrorKind for std::num::IntErrorKind {
     }
 }
 
-impl ErrorKind for swf::error::Error {
-    fn kind(&self) -> ErrorName {
-        match self {
-            Self::Avm1ParseError { .. } => ErrorName::SwfAvm1ParseError,
-            Self::InvalidData(_) => ErrorName::SwfInvalidData,
-            Self::SwfParseError { .. } => ErrorName::SwfParseError,
-            Self::IoError(_) => ErrorName::SwfIoError,
-            Self::Unsupported(_) => ErrorName::SwfUnsupported,
-        }
-    }
-}
-
 impl ErrorKind for tokio::task::JoinError {
     fn kind(&self) -> ErrorName {
         if self.is_panic() {
@@ -631,7 +614,6 @@ impl ErrorKind for crate::api::error::ApiError {
             Self::ContentTypeMismatch(..) => ErrorName::ContentTypeMismatch,
             Self::CyclicDependency(_) => ErrorName::CyclicDependency,
             Self::DeleteDefault(_) => ErrorName::DeleteDefault,
-            Self::EmptySwf => ErrorName::EmptySwf,
             Self::EmptyVideo => ErrorName::EmptyVideo,
             Self::ExpressionFailsRegex(..) => ErrorName::ExpressionFailsRegex,
             Self::ExtensionRejection(_) => ErrorName::ExtensionRejection,
@@ -663,6 +645,7 @@ impl ErrorKind for crate::api::error::ApiError {
             Self::MissingSmtpInfo => ErrorName::MissingSmtpInfo,
             Self::Multipart(_) => ErrorName::MultipartError,
             Self::MultipartRejection(err) => err.kind(),
+            Self::NegativeCustomFieldValue(_) => ErrorName::NegativeCustomFieldValue,
             Self::NoNamesGiven(_) => ErrorName::NoNamesGiven,
             Self::NotAnInteger(err) => err.kind().kind(),
             Self::NotFound(err) => err.kind(),
@@ -675,7 +658,6 @@ impl ErrorKind for crate::api::error::ApiError {
             Self::ResourceModified => ErrorName::ResourceModified,
             Self::SelfMerge(_) => ErrorName::SelfMerge,
             Self::StdIo(err) => err.kind().kind(),
-            Self::SwfDecoding(err) => err.kind(),
             Self::TaskJoin(err) => err.kind(),
             Self::UnauthorizedPasswordReset => ErrorName::UnauthorizedPasswordReset,
             Self::UnsupportedExtension(_) => ErrorName::UnsupportedExtension,

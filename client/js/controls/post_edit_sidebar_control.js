@@ -39,8 +39,7 @@ class PostEditSidebarControl extends events.EventTarget {
                 canEditPostRelations: api.hasPrivilege("post_edit_relation"),
                 canEditPostNotes:
                     api.hasPrivilege("post_edit_note") &&
-                    post.type !== "video" &&
-                    post.type !== "flash",
+                    post.type !== "video",
                 canEditPostFlags: api.hasPrivilege("post_edit_flag"),
                 canEditPostContent: api.hasPrivilege("post_edit_content"),
                 canEditPostThumbnail: api.hasPrivilege("post_edit_thumbnail"),

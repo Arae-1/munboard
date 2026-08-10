@@ -10,7 +10,6 @@ use url::Url;
 pub mod cache;
 pub mod decode;
 pub mod download;
-mod flash;
 pub mod hash;
 pub mod signature;
 pub mod thumbnail;
@@ -56,7 +55,7 @@ impl Content {
         let temp_path = token.path(config);
         tokio::task::block_in_place({
             || {
-                decode::representative_image(config, &temp_path, token.mime_type())
+                decode::representative_image(&temp_path, token.mime_type())
                     .map(|image| thumbnail::create(config, &image, thumbnail_type))
             }
         })

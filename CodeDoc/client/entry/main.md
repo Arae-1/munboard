@@ -23,14 +23,13 @@ The startup sequence runs in these steps:
 6. Register a router exit handler to save scroll position and confirm page exit.
 7. Register a router enter handler to reset keyboard shortcuts via Mousetrap.
 8. Apply the dark theme if the user setting `darkTheme` is enabled.
-9. Configure Ruffle (Flash emulator) global settings.
-10. Call `api.fetchConfig()` to get the remote configuration.
-11. On success, require and register all controllers on the router.
-12. Re-apply the dark theme setting.
-13. Set video autoplay based on the `autoplayVideos` setting.
-14. Call `api.loginFromCookies()` to restore the user session from cookies.
-15. On login success, refresh tag and pool category color maps, then start the router.
-16. On login failure:
+9. Call `api.fetchConfig()` to get the remote configuration.
+10. On success, require and register all controllers on the router.
+11. Re-apply the dark theme setting.
+12. Set video autoplay based on the `autoplayVideos` setting.
+13. Call `api.loginFromCookies()` to restore the user session from cookies.
+14. On login success, refresh tag and pool category color maps, then start the router.
+15. On login failure:
     - If the current URL contains "login", forget auth cookies and start the router.
     - Otherwise, navigate to "/" and show the login error.
 

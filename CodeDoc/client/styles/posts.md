@@ -98,4 +98,4 @@ tags: [client, styles, posts]
 ## Template: `index.htm`
 **Not a `.tpl` file** — the main HTML entry point.
 
-**Structure**: Standard HTML5 doctype with meta tags (viewport, theme-color, apple-mobile-web-app, msapplication), base tag placeholder (replaced at build time), app.min.css and vendor.min.css links, favicon/apple-touch-icon/splash screen links, manifest.json link. Body contains `#top-navigation-holder` and `#content-holder` divs, then loads vendor.min.js, app.min.js, and Ruffle (Flash emulator) asynchronously.
+**Structure**: Standard HTML5 doctype with meta tags (viewport, theme-color, apple-mobile-web-app, msapplication), base tag placeholder (replaced at build time), app.min.css and vendor.min.css links, favicon/apple-touch-icon/splash screen links, manifest.json link. Body contains `#top-navigation-holder` and `#content-holder` divs, then loads vendor.min.js and app.min.js asynchronously.

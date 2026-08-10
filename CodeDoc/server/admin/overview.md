@@ -138,7 +138,7 @@ Decodes each post's content, computes the image similarity signature, and update
 Regenerates the 100 search index words from existing compressed signatures. Does not require reading post content.
 
 ### `recompute_post_types`
-Redetects the post type (image/animation/video/flash/document) and updates the database.
+Redetects the post type (image/animation/video/document) and updates the database.
 
 ### `regenerate_thumbnails`
 Decodes each post's content and regenerates the thumbnail. Updates the `generated_thumbnail_size`.

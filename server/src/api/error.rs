@@ -55,8 +55,6 @@ pub enum ApiError {
     FileTooLarge(ByteSize),
     #[error("Metadata exceeds maximum size of {0}")]
     MetadataTooLarge(ByteSize),
-    #[error("SWF has no decodable images")]
-    EmptySwf,
     #[error("Video file has no frames")]
     EmptyVideo,
     #[error("'{0}' does not match on {1} regex")]
@@ -102,6 +100,8 @@ pub enum ApiError {
     MissingSmtpInfo,
     Multipart(#[from] axum::extract::multipart::MultipartError),
     MultipartRejection(#[from] axum::extract::multipart::MultipartRejection),
+    #[error("Custom field '{0}' must be a non-negative integer")]
+    NegativeCustomFieldValue(SmallString),
     #[error("{0} needs at least one name")]
     NoNamesGiven(ResourceType),
     NotAnInteger(#[from] std::num::ParseIntError),
@@ -120,7 +120,6 @@ pub enum ApiError {
     #[error("Cannot merge {0} with itself")]
     SelfMerge(ResourceType),
     StdIo(#[from] std::io::Error),
-    SwfDecoding(#[from] swf::error::Error),
     TaskJoin(#[from] tokio::task::JoinError),
     #[error("Password reset token is invalid")]
     UnauthorizedPasswordReset,
@@ -157,7 +156,6 @@ impl ApiError {
             | Self::DeleteDefault(_)
             | Self::FileTooLarge(_)
             | Self::MetadataTooLarge(_)
-            | Self::EmptySwf
             | Self::EmptyVideo
             | Self::ExpressionFailsRegex(..)
             | Self::FfmpegError(_)
@@ -170,10 +168,10 @@ impl ApiError {
             | Self::InvalidTime(_)
             | Self::InvalidUploadToken
             | Self::InvalidUserRank
+            | Self::NegativeCustomFieldValue(_)
             | Self::NoNamesGiven(_)
             | Self::NotAnInteger(_)
-            | Self::SelfMerge(_)
-            | Self::SwfDecoding(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            | Self::SelfMerge(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::FailedEmailTransport(_)
             | Self::FailedQuery(_)
             | Self::InvalidHeader(_)
@@ -202,7 +200,6 @@ impl ApiError {
             Self::DeleteDefault(_) => "Delete Default",
             Self::FileTooLarge(_) => "File Too Large",
             Self::MetadataTooLarge(_) => "Metadata Too Large",
-            Self::EmptySwf => "Empty SWF",
             Self::EmptyVideo => "Empty Video",
             Self::ExpressionFailsRegex(..) => "Expression Fails Regex",
             Self::ExtensionRejection(_) => "Extension Rejection",
@@ -234,6 +231,7 @@ impl ApiError {
             Self::MissingSmtpInfo => "Missing SMTP Info",
             Self::Multipart(_) => "Multipart/Form-Data Error",
             Self::MultipartRejection(_) => "Multipart Rejection",
+            Self::NegativeCustomFieldValue(_) => "Negative Custom Field Value",
             Self::NoNamesGiven(_) => "No Names Given",
             Self::NotAnInteger(_) => "Parse Int Error",
             Self::NotFound(_) => "Resource Not Found",
@@ -246,7 +244,6 @@ impl ApiError {
             Self::ResourceModified => "Resource Modified",
             Self::SelfMerge(_) => "Self Merge",
             Self::StdIo(_) => "IO Error",
-            Self::SwfDecoding(_) => "SWF Decoding Error",
             Self::TaskJoin(_) => "Task Join Error",
             Self::UnauthorizedPasswordReset => "Unauthorized Password Reset",
             Self::UnsupportedExtension(_) => "Unsupported extension",

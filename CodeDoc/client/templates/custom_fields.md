@@ -59,4 +59,4 @@ tags: [client, templates, custom-fields]
 
 ## `custom_field_input.tpl`
 **Used by**: CustomFieldInputControl
-**Structure**: Div with name input (`cf-name`), number input (`cf-value`), Add button, and `compact-custom-fields` list.
+**Structure**: Div with name input (`cf-name`), number input (`cf-value`, min 0, step 1), Add button, and `compact-custom-fields` list.

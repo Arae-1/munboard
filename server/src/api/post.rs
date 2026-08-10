@@ -122,7 +122,7 @@ where
 /// | `note-text`                                                  | having given note text (accepts wildcards)                              |
 /// | `relation-count`                                             | having given number of relations                                        |
 /// | `feature-count`                                              | having been featured given number of times                              |
-/// | `type`                                                       | type of posts (can be either `image`, `animation`, `flash`, `video`, or `document`) |
+/// | `type`                                                       | type of posts (can be either `image`, `animation`, `video`, or `document`) |
 /// | `content-checksum`                                           | having given BLAKE3 checksum                                            |
 /// | `flag`                                                       | having given flag (can be either `loop` or `sound`)                     |
 /// | `source`                                                     | having given source                                                     |
@@ -1122,6 +1122,10 @@ async fn update_impl(
                         .optional()?
                         .ok_or(ApiError::NotFound(ResourceType::CustomField))?;
 
+                    if *value < 0 {
+                        return Err(ApiError::NegativeCustomFieldValue(name.clone()));
+                    }
+
                     diesel::insert_into(post_custom_field::table)
                         .values((
                             post_custom_field::post_id.eq(post_id),
@@ -1378,8 +1382,9 @@ mod test {
     use crate::filesystem::Directory;
     use crate::model::enums::{ResourceType, UserRank};
     use crate::model::post::Post;
-    use crate::schema::{post, post_feature, post_statistics, tag, tag_name, user, user_statistics};
+    use crate::schema::{custom_field, post, post_custom_field, post_feature, post_statistics, tag, tag_name, user, user_statistics};
     use crate::search::post::Token;
+    use crate::string::SmallString;
     use crate::test::*;
     use crate::time::DateTime;
     use axum::ServiceExt;
@@ -1738,6 +1743,27 @@ mod test {
         assert!(new_post.last_edit_time > post.last_edit_time);
         assert_eq!(new_tag_count, tag_count);
         assert_eq!(new_relation_count, relation_count);
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn custom_field() -> ApiResult<()> {
+        verify_response("PUT /post/1/?fields=id,customFields", "post/edit_custom_fields").await?;
+        verify_response("PUT /post/1/?fields=id", "post/edit_invalid_custom_field").await?;
+
+        // The valid update must have replaced the seeded values (foo=1, bar=2)
+        // with foo=0, bar=5, and the invalid update must have left them intact.
+        let mut conn = get_connection()?;
+        let values: Vec<(SmallString, i64)> = post_custom_field::table
+            .inner_join(custom_field::table)
+            .select((custom_field::name, post_custom_field::value))
+            .filter(post_custom_field::post_id.eq(1))
+            .order(custom_field::name)
+            .load(&mut conn)?;
+        assert_eq!(values, vec![(SmallString::new("bar"), 5), (SmallString::new("foo"), 0)]);
+
+        reset_database();
         Ok(())
     }
 

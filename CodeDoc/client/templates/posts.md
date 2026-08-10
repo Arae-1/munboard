@@ -41,7 +41,6 @@ tags: [client, templates, posts]
 **Variables**: `ctx.post.type`, `ctx.post.contentUrl`, `ctx.post.thumbnailUrl`, `ctx.post.canvasWidth`, `ctx.post.canvasHeight`, `ctx.post.mimeType`, `ctx.post.flags`, `ctx.autoplay`, `ctx.makeElement`
 **Structure**: Div with `post-type-<type>` class. Renders differently by type:
 - **image/animation**: `<img>` element
-- **flash**: `<object>` with Flash params, shows error if unsupported
 - **video**: `<video>` with controls, optional loop and autoplay
 - **document**: `<embed>` for PDF with fallback link
 - All include a `.post-overlay` div for note annotations

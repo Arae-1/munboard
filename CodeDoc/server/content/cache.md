@@ -136,9 +136,8 @@ Computes all content properties without interacting with the cache. This is the 
 6. **Sound detection:**
    - `PostType::Image | Animation | Document`: `has_sound = false`.
    - `PostType::Video`: `decode::video_has_audio(&temp_path)`.
-   - `PostType::Flash`: `decode::swf_has_audio(&temp_path)`.
    - If `has_sound` is true, create `PostFlags::new_with(PostFlag::Sound)`. Otherwise `PostFlags::new()`.
-7. **Image decoding:** `decode::representative_image(&ctx.config, &temp_path, mime_type)`.
+7. **Image decoding:** `decode::representative_image(&temp_path, mime_type)`.
 8. **Construct and return `CachedProperties`:**
    - `token`: The input token.
    - `checksum`: BLAKE3.

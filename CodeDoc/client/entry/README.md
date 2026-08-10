@@ -15,8 +15,7 @@ The `main.js` file orchestrates the entire startup. The sequence is:
 6. Register router exit handler (save scroll position + confirm page exit)
 7. Register router enter handler (reset keyboard shortcuts)
 8. Apply dark theme from settings (class on document.body)
-9. Configure Ruffle (Flash emulator) global settings
-10. Call api.fetchConfig() — fetches /api/info for server configuration
+9. Call api.fetchConfig() — fetches /api/info for server configuration
     └── On success:
         a. Require and register all 26 controllers on the router
         b. Re-apply dark theme

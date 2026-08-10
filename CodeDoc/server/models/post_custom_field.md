@@ -16,7 +16,7 @@ Derives: `Associations`, `Identifiable`, `Insertable`, `Queryable`, `Selectable`
 |-------|------|-------------|
 | `post_id` | `i64` | Part of composite primary key. Foreign key to `post.id`. |
 | `custom_field_id` | `i64` | Part of composite primary key. Foreign key to `custom_field.id`. |
-| `value` | `i64` | The integer value assigned to the custom field for this post. |
+| `value` | `i64` | The value assigned to the custom field for this post. Must be a non-negative integer (0 is allowed; negative values are rejected by the API and by a DB CHECK constraint). |
 
 Diesel annotations:
 - `#[diesel(table_name = post_custom_field)]`

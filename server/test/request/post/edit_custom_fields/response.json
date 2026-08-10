@@ -1,0 +1,15 @@
+{
+  "customFields": [
+    {
+      "color": "#ff0000",
+      "name": "foo",
+      "value": 0
+    },
+    {
+      "color": "#ff0000",
+      "name": "bar",
+      "value": 5
+    }
+  ],
+  "id": 1
+}

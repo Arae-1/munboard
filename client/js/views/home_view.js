@@ -74,10 +74,7 @@ class HomeView {
                 postInfo.featuredPost
             );
 
-            if (
-                postInfo.featuredPost.type === "video" ||
-                postInfo.featuredPost.type === "flash"
-            ) {
+            if (postInfo.featuredPost.type === "video") {
                 this._postContentControl.disableOverlay();
             }
         }

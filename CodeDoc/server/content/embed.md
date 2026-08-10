@@ -129,7 +129,7 @@ Returns the `og:image`, `twitter:image`, and `twitter:card` tags for a thumbnail
 | `Logo` with a non-empty `logo_url` | `og:image` and `twitter:image` are the logo URL. `twitter:card` is `summary`. |
 | `Logo` with an empty `logo_url` | Falls through to the `Post` behavior (the guard `!config.embed.logo_url.is_empty()` does not match). |
 | `Post` for `Image` or `Animation` posts | `og:image` is the content URL. `og:image:width` and `og:image:height` are the post dimensions. `twitter:card` is `summary_large_image` when `width >= 280` and `height >= 150`, otherwise `summary`. `twitter:image` is the content URL. |
-| `Post` for `Video`, `Flash`, or `Document` posts | `thumbnail_image_tags` (the thumbnail preview). |
+| `Post` for `Video` or `Document` posts | `thumbnail_image_tags` (the thumbnail preview). |
 
 ## Function: `icon_link(logo_url, site_base) -> String`
 
@@ -171,7 +171,7 @@ Replaces the placeholders in `PAGE_TEMPLATE`:
 | `%%BASE_HREF%%` | The base href, passed through `encode_html` |
 | `%%ICON_LINK%%` | The favicon link element (already escaped) |
 
-The template (`embed/page.html`) is an HTML shell that loads `css/app.min.css`, `css/vendor.min.css`, `js/vendor.min.js`, `js/app.min.js`, and the Ruffle Flash player. It contains empty `#top-navigation-holder` and `#content-holder` divs that the SPA populates. The page boots the SPA in a real browser.
+The template (`embed/page.html`) is an HTML shell that loads `css/app.min.css`, `css/vendor.min.css`, `js/vendor.min.js`, `js/app.min.js`. It contains empty `#top-navigation-holder` and `#content-holder` divs that the SPA populates. The page boots the SPA in a real browser.
 
 ## Function: `base_href(headers: &HeaderMap) -> String`
 
@@ -201,7 +201,7 @@ The embed templates (`config.embed.site_name`, `config.embed.title`, `config.emb
 | `{width}` | The post width |
 | `{height}` | The post height |
 | `{dimensions}` | `{width}x{height}` |
-| `{type}` | The lowercase post type word: `image`, `animation`, `video`, `flash`, or `document` |
+| `{type}` | The lowercase post type word: `image`, `animation`, `video`, or `document` |
 | `{file_size}` | The file size in binary units, matching the `ByteSize` display in the API |
 | `{creation_date}` | The creation date as ISO `YYYY-MM-DD`, or empty on error |
 | `{launch_date}` | The launch date as ISO `YYYY-MM-DD`, or empty when not set |

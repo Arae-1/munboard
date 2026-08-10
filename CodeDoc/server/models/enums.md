@@ -52,8 +52,7 @@ Defines the type of media content of a post.
 | `Image` | 0 | A static image file. |
 | `Animation` | 1 | An animated image (e.g. animated GIF). |
 | `Video` | 2 | A video file. |
-| `Flash` | 3 | An Adobe Flash (SWF) file. |
-| `Document` | 4 | A document file (e.g. PDF). |
+| `Document` | 3 | A document file (e.g. PDF). |
 
 Serde: `#[serde(rename_all = "lowercase")]` — serializes as `"image"`, `"animation"`, etc.
 
@@ -75,9 +74,8 @@ Defines a supported MIME type for post content.
 | `Mp4` | 5 | `"video/mp4"` | `mp4`, `m4a`, `m4b`, `m4p`, `m4r`, `m4v` |
 | `Mov` | 6 | `"video/quicktime"` | `mov`, `movie`, `qt` |
 | `Webm` | 7 | `"video/webm"` | `webm` |
-| `Swf` | 8 | `"application/x-shockwave-flash"` | `swf` |
-| `Avif` | 9 | `"image/avif"` | `avif` |
-| `Pdf` | 10 | `"application/pdf"` | `pdf` |
+| `Avif` | 8 | `"image/avif"` | `avif` |
+| `Pdf` | 9 | `"application/pdf"` | `pdf` |
 
 Serde: Each variant has `#[serde(rename = "...")]` to use the full MIME type string.
 
@@ -89,7 +87,7 @@ Custom methods:
 - `extension(self) -> &'static str` — Returns the default file extension for the MIME type.
 
 Custom trait implementations:
-- `FromStr` — Parses a MIME type string (e.g. `"image/png"`) to `MimeType`. Also accepts `"application/vnd.adobe.flash.movie"` for Flash.
+- `FromStr` — Parses a MIME type string (e.g. `"image/png"`) to `MimeType`.
 
 ### `PostSafety`
 

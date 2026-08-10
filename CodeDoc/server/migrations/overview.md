@@ -186,3 +186,16 @@ Stores only a BLAKE3 hash (hex) and an AES-256-GCM ciphertext of each user token
 **Creates index**: unique partial index `user_token_token_hash` on `token_hash` WHERE `token_hash` <> `''`. Real tokens get a unique 64-character hex hash; empty-string hashes (rows without a token value, for example legacy inserts) may repeat.
 
 **Down migration**: drops the index, then drops the `token_secret` and `token_hash` columns.
+
+### 031 — Custom Field Value Non-negative
+Adds a CHECK constraint `post_custom_field_value_non_negative` on `post_custom_field.value` requiring `value >= 0` (0 is allowed).
+
+**Down migration**: drops the `post_custom_field_value_non_negative` constraint.
+
+### 032 — Remove Flash Post Type
+Removes Flash (SWF) support. PostType and MimeType are stored as SMALLINTs. Flash was PostType 3 and Swf was MimeType 8; both variants are removed from the Rust enums, which compacts the remaining values, so existing rows are remapped:
+- **Deletes** all flash posts: `DELETE FROM post WHERE type = 3 OR mime_type = 8`. Flash posts cannot be represented anymore, so they are deleted first.
+- **Compacts PostType**: `Document 4 -> 3` (`UPDATE post SET type = type - 1 WHERE type > 3`).
+- **Compacts MimeType**: `Avif 9 -> 8`, `Pdf 10 -> 9` (`UPDATE post SET mime_type = mime_type - 1 WHERE mime_type > 8`).
+
+**Down migration**: reverses the shifts (`type + 1 WHERE type >= 3`, `mime_type + 1 WHERE mime_type >= 8`), restoring the pre-removal enum values (Flash 3 and Swf 8 become gaps again). Deleted flash posts cannot be restored.

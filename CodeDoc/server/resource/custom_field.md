@@ -31,7 +31,7 @@ A simple value struct that represents one custom field assignment on a post.
 | Field | Type | Source | Purpose |
 |-------|------|--------|---------|
 | `name` | `SmallString` | `custom_field.name` | The custom field name |
-| `value` | `i64` | `post_custom_field.value` | The assigned integer value |
+| `value` | `i64` | `post_custom_field.value` | The assigned value. Must be a non-negative integer (0 is allowed; negative values are rejected). |
 | `color` | `SmallString` | `custom_field.color` | Display color for the field |
 
 **Serialization:** All fields are always present (no `Option`). The struct is `Clone`, `Serialize`, `ToSchema`.

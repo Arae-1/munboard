@@ -2,13 +2,12 @@
 
 ## Summary
 
-This module decodes image and video content into pixel data. It supports raster images (BMP, GIF, JPEG, PNG, WebP, AVIF), vector formats (SWF/Flash), videos (MOV, MP4, WebM), and PDF documents. It uses the `image` crate for raster formats, `ffmpeg_sidecar` for video/AVIF, `swf` crate for Flash, and `pdftoppm` for PDF.
+This module decodes image and video content into pixel data. It supports raster images (BMP, GIF, JPEG, PNG, WebP, AVIF), videos (MOV, MP4, WebM), and PDF documents. It uses the `image` crate for raster formats, `ffmpeg_sidecar` for video/AVIF, and `pdftoppm` for PDF.
 
 ## Imports
 
-- `api::error::{ApiError, ApiResult, ByteSize}`: Error types.
-- `config::Config`: Application configuration.
-- `content::{self, flash}`: Content module and Flash decoding utilities.
+- `api::error::{ApiError, ApiResult}`: Error types.
+- `content`: Content module helpers (`map_read_result`).
 - `model::enums::{MimeType, PostType}`: MIME and post types.
 - `ffmpeg_sidecar::child::FfmpegChild`: FFmpeg child process handle.
 - `ffmpeg_sidecar::command::FfmpegCommand`: FFmpeg CLI wrapper.
@@ -16,13 +15,11 @@ This module decodes image and video content into pixel data. It supports raster 
 - `image::codecs::{gif::GifDecoder, webp::WebPDecoder}`: GIF and WebP decoders.
 - `image::{AnimationDecoder, DynamicImage, ImageDecoder, ImageFormat, ImageReader, Limits, RgbImage, RgbaImage}`: Image decoding types.
 - `std::fs::File`: File I/O.
-- `std::io::{BufReader, Read, Seek}`: Buffered reading, reading, and seeking.
+- `std::io::BufReader`: Buffered reading.
 - `std::path::Path`: File paths.
 - `std::process::Command`: Process spawning (for pdftoppm).
 - `std::sync::mpsc::{self, RecvTimeoutError}`: Event channel between ffmpeg parser threads and the caller.
 - `std::time::{Duration, Instant}`: Timeouts and deadlines.
-- `swf::Tag`: SWF tag enum.
-- `tracing::error`: Logging.
 
 ## Constants
 
@@ -31,14 +28,13 @@ This module decodes image and video content into pixel data. It supports raster 
 | `MAX_IMAGE_DIMENSION` | `16384` (16K) | Maximum width or height, in pixels, of an image or frame we are willing to decode. Rejects pathological dimensions before decoders allocate multi-GB buffers. |
 | `MAX_DOCUMENT_RENDER_DIMENSION` | `4096` | Maximum width or height, in pixels, at which a PDF page may be rendered. PDF pages are only used for a thumbnail, so this smaller cap bounds a pathological render at about 0.7 s of CPU. Normal pages (letter at `-r 100` is about 850x1100) are unaffected. |
 | `MAX_IMAGE_ALLOCATION` | `512 * 1024 * 1024` (512 MiB) | Maximum number of bytes image decoders may allocate while decoding. |
-| `MAX_SWF_UNCOMPRESSED_SIZE` | `256 * 1024 * 1024` (256 MiB) | Maximum declared uncompressed size of an SWF file. The SWF library pre-allocates the declared size before parsing, so this prevents multi-GB allocations from a crafted header (decompression bomb). |
 | `FFMPEG_TIMEOUT` | `Duration::from_secs(30)` | Wall-clock time limit for a single ffmpeg subprocess (probe or decode). |
 | `PDFTOPP_TIMEOUT` | `Duration::from_secs(15)` | Wall-clock time limit for pdftoppm rendering. |
 
-## Function: `representative_image(config, file_path, mime_type) -> ApiResult<DynamicImage>`
+## Function: `representative_image(file_path, mime_type) -> ApiResult<DynamicImage>`
 
 ```rust
-pub fn representative_image(config: &Config, file_path: &Path, mime_type: MimeType) -> ApiResult<DynamicImage>
+pub fn representative_image(file_path: &Path, mime_type: MimeType) -> ApiResult<DynamicImage>
 ```
 
 Returns a representative image for the content at `file_path`. The method varies by MIME type:
@@ -50,8 +46,7 @@ Returns a representative image for the content at `file_path`. The method varies
 | `Jpeg` | `image(path, ImageFormat::Jpeg)` | Direct decode |
 | `Png` | `image(path, ImageFormat::Png)` | Direct decode |
 | `Webp` | `image(path, ImageFormat::WebP)` | Direct decode |
-| `Swf` | `flash_image(config, path)` then `frame.ok_or(ApiError::EmptySwf)` | Largest SWF image; error if no decodable image found |
-| `Avif` | `ffmpeg_frame(path, PostType::Image)` then `frame.ok_or(ApiError::FfmpegError(...))` | FFmpeg frame extraction; error if no frame |
+| `Avif` | `ffmpeg_frame(path, PostType::Image)` then `frame.ok_or(ApiError::FfmpegError("Unable to decode AVIF image with FFmpeg"))` | FFmpeg frame extraction; error if no frame |
 | `Pdf` | `pdf_representative_image(file_path)` | First page rendered via pdftoppm |
 | `Mov`, `Mp4`, `Webm` | `ffmpeg_frame(path, PostType::Video)` then `frame.ok_or(ApiError::EmptyVideo)` | FFmpeg thumbnail filter; error if no frame |
 
@@ -68,38 +63,6 @@ Returns `true` if the video at `path` contains an audio stream.
    - Ignore other events.
 4. If loop completes without finding audio: return `Ok(false)`.
 
-## Function: `swf_has_audio(path) -> ApiResult<bool>`
-
-Returns `true` if the SWF at `path` contains audio tags.
-
-**Algorithm:**
-1. Decompress the SWF with `decompress_swf_file(path)`.
-2. Parse SWF: `swf::parse_swf(&swf_buf)`.
-3. Check tags for audio-related variants:
-   - `DefineButtonSound`
-   - `DefineSound`
-   - `SoundStreamBlock`
-   - `SoundStreamHead`
-   - `SoundStreamHead2`
-   - `StartSound`
-   - `StartSound2`
-4. Return `true` if any audio tag found, `false` otherwise.
-
-## Function: `decompress_swf_file(path) -> ApiResult<swf::SwfBuf>`
-
-Decompresses the SWF file at `path`, after rejecting files whose declared uncompressed length exceeds `MAX_SWF_UNCOMPRESSED_SIZE`.
-
-**Security note:** The SWF library allocates a buffer of the declared size up front, so a crafted header could otherwise force a multi-GB pre-allocation.
-
-**Algorithm:**
-1. Open the file and wrap it in a `BufReader`.
-2. Read the 8-byte SWF header: 3-byte signature (`FWS`, `CWS`, or `ZWS`), 1-byte version, then a little-endian `u32` giving the uncompressed file length (header included).
-3. If the signature is not one of `FWS`, `CWS`, or `ZWS`: return an invalid-data SWF error.
-4. If the declared length is greater than `MAX_SWF_UNCOMPRESSED_SIZE`: return `Err(ApiError::FileTooLarge(ByteSize(MAX_SWF_UNCOMPRESSED_SIZE)))`.
-5. Seek back to the start of the file and decompress with `swf::decompress_swf`.
-6. A crafted zlib stream can inflate beyond its declared length. If the actual decompressed size exceeds `MAX_SWF_UNCOMPRESSED_SIZE`: return `Err(ApiError::FileTooLarge(ByteSize(MAX_SWF_UNCOMPRESSED_SIZE)))`.
-7. Return the decompressed SWF buffer.
-
 ## Function: `detect_post_type(file_path, mime_type) -> ApiResult<PostType>`
 
 Returns the post type based on file content analysis.
@@ -115,7 +78,6 @@ Returns the post type based on file content analysis.
 | `Webp` | `webp_is_animated(path)` | Animation or Image |
 | `Bmp`, `Jpeg`, `Png` | (static check) | Image |
 | `Mp4`, `Mov`, `Webm` | (static check) | Video |
-| `Swf` | (static check) | Flash |
 | `Pdf` | (static check) | Document |
 
 ## Constant: `FFMPEG_PATH`
@@ -176,10 +138,10 @@ Extracts a representative frame using FFmpeg. Returns `None` if no frame is prod
 **Algorithm:**
 1. Probe the coded dimensions with `probe_video_dimensions(path)`.
    - If either dimension exceeds `MAX_IMAGE_DIMENSION`: return `Err(ApiError::FfmpegError("Media dimensions exceed the maximum supported size"))`. This rejects oversized media before the decode pass allocates full-resolution frame buffers inside ffmpeg.
-2. Determine video format: `is_video_format = matches!(post_type, Video | Flash)`.
+2. Determine video format: `is_video_format = matches!(post_type, PostType::Video)`.
 3. Build the scale filter: `scale=w='min(16384,iw)':h='min(16384,ih)':force_original_aspect_ratio=decrease`. This scales frames down before their raw bytes are transferred into the process, so an oversized video cannot force a multi-GB frame allocation.
 4. Choose filter:
-   - Video/Flash: `"thumbnail,format=rgb24,{scale}"` (thumbnail filter selects representative frame, RGB24 output).
+   - Video: `"thumbnail,format=rgb24,{scale}"` (thumbnail filter selects representative frame, RGB24 output).
    - Image (AVIF): `"format=rgba,{scale}"` (RGBA for alpha support).
 5. Spawn ffmpeg with arguments: `-threads 1 -t 30 -vf {filter} -frames:v 1 -f rawvideo -`.
    - `-threads 1` bounds decode CPU usage; the `FFMPEG_TIMEOUT` deadline bounds wall time.
@@ -226,30 +188,6 @@ Decodes the PNG rendered by `pdftoppm` with the same limits as regular image upl
 2. Create an `ImageReader` with `BufReader`, set the format to `Png`.
 3. Set decoder limits to `image_reader_limits()`.
 4. Call `reader.decode()`.
-
-## Function: `flash_image(config, path) -> ApiResult<Option<DynamicImage>>`
-
-Extracts the largest decodable image from a SWF file.
-
-**Algorithm:**
-1. Decompress the SWF with `decompress_swf_file(path)`.
-2. Parse SWF tags.
-3. Search for `JpegTables` tag: stores JPEG encoding tables used by `DefineBits` tags. Find the first one.
-4. Collect all images from image-bearing tags:
-   - `DefineBits { jpeg_data }`: Glue JPEG tables to data via `flash::glue_tables_to_jpeg`, then decode with `flash::decode_embedded_image` (applies the embedded-image limits).
-   - `DefineBitsLossless(bits)`: Call `flash::decode_define_bits_lossless(bits)`.
-   - `DefineBitsJpeg2 { jpeg_data }`: Call `flash::decode_define_bits_jpeg(jpeg_data, None)`.
-   - `DefineBitsJpeg3(bits)`: Call `flash::decode_define_bits_jpeg(bits.data, Some(bits.alpha_data))`.
-   - Other tags: Skip.
-   - Filter out errors (log and skip).
-5. If `ffmpeg_frame(path, PostType::Flash)` returns a frame: push it to the images list. (Fallback for video-only SWFs.)
-6. **Sort images by effective width after cropping:**
-   - Get `(thumbnail_width, thumbnail_height)` from config.
-   - For each image: compute effective width.
-     - Condition `image.width() * thumbnail_height > thumbnail_width * image.height()`: aspect ratio wider than config, so crop to height. Effective width = `image.height() * thumbnail_width / thumbnail_height`.
-     - Otherwise: effective width = `image.width()`.
-   - Sort by `u32::MAX - effective_width` (descending).
-7. Return the first (largest) image.
 
 ## Function: `avif_is_animated(path) -> ApiResult<bool>`
 

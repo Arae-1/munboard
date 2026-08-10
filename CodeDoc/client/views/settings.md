@@ -28,7 +28,7 @@ tags: [client, views, settings]
 - `post-flow` — use content-aware flow for post thumbnails
 - `transparency-grid` — checkered pattern behind transparent posts
 - `tag-suggestions` — show suggested tags popup in edit forms
-- `autoplay-videos` — auto-play video posts (also sets `window.RufflePlayer.config.autoplay`)
+- `autoplay-videos` — auto-play video posts
 - `underscores-as-spaces` — display underscores as spaces (visual only)
 - `accent-color` — color picker input
 

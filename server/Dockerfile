@@ -47,9 +47,9 @@ RUN ./configure \
     --enable-static \
     --enable-libdav1d \
     --enable-protocol=file,pipe \
-    --enable-demuxer=avif,matroska,mov,swf \
+    --enable-demuxer=avif,matroska,mov \
     --enable-parser=h264,hevc \
-    --enable-decoder=flv1,h264,hevc,libdav1d,vp6,vp6a,vp6f,vp8,vp9 \
+    --enable-decoder=h264,hevc,libdav1d,vp8,vp9 \
     --enable-filter=copy,format,null,scale,thumbnail \
     --enable-encoder=rawvideo \
     --enable-muxer=null,rawvideo \

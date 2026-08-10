@@ -166,7 +166,6 @@ Verifies that the magic bytes at the start of the file match the claimed MIME ty
 | `Webp` | `starts_with(b"RIFF")` AND `magic[8..12] == b"WEBP"` |
 | `Mp4`, `Mov`, `Avif` | `magic[4..8] == b"ftyp"` (ISO base media file format) |
 | `Webm` | `starts_with([0x1A, 0x45, 0xDF, 0xA3])` (EBML header) |
-| `Swf` | `starts_with(b"FWS")` (uncompressed) or `starts_with(b"CWS")` (compressed) |
 | `Pdf` | `starts_with(b"%PDF")` |
 
 4. If valid: return `Ok(())`. Otherwise: return `Err(ApiError::InvalidMagicBytes(mime_type))`.

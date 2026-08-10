@@ -1,15 +1,7 @@
-<div class='post-content post-type-<%- ctx.post.type %>' style='<%- ctx.post.type === 'flash' ? 'background-image: url('+ctx.post.thumbnailUrl+')' : '' %>'>
+<div class='post-content post-type-<%- ctx.post.type %>'>
     <% if (['image', 'animation'].includes(ctx.post.type)) { %>
 
         <img class='resize-listener' alt='' src='<%- ctx.post.contentUrl %>' draggable='false'/>
-
-    <% } else if (ctx.post.type === 'flash') { %>
-
-        <object class='resize-listener' width='<%- ctx.post.canvasWidth %>' height='<%- ctx.post.canvasHeight %>' data='<%- ctx.post.contentUrl %>'>
-            <param name='wmode' value='transparent'/>
-            <param name='movie' value='<%- ctx.post.contentUrl %>'/>
-            <div class='messages'><div class='message-wrapper'><div class='message error'>Your browser does not support Flash.</div></div></div>
-        </object>
 
     <% } else if (ctx.post.type === 'video') { %>
 

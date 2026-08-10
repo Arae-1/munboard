@@ -56,8 +56,7 @@ http {
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
         # Starting-point CSP for the bundled client; tune it to your own
         # client build:
-        #   - scripts load from 'self' plus unpkg.com (Ruffle Flash emulator)
-        #     and static.cloudflareinsights.com (Cloudflare Web Analytics
+        #   - scripts load from 'self' plus static.cloudflareinsights.com (Cloudflare Web Analytics
         #     beacon.min.js, injected by the proxy edge, not by repo code)
         #   - style-src 'unsafe-inline' because the client injects <style>
         #     rules at runtime (see client/js/{tags,pools}.js)
@@ -65,7 +64,7 @@ http {
         # If your client uses inline scripts, you will need to hash or nonce
         # them instead of relaxing script-src.
         #   - img-src https: allows gravatar/external avatar images
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://unpkg.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
         add_header Strict-Transport-Security $hsts_header always;
 
         # Swagger UI / API docs proxying. Private by default: the API surface
@@ -99,7 +98,7 @@ http {
             add_header X-Content-Type-Options "nosniff" always;
             add_header X-Frame-Options "DENY" always;
             add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-            add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://unpkg.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
+            add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
             add_header Strict-Transport-Security $hsts_header always;
 
             if ($request_method = 'OPTIONS') {

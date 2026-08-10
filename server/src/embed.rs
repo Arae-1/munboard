@@ -260,7 +260,7 @@ fn full_tags(
                 tags.push(format!("<meta name=\"twitter:card\" content=\"{twitter_card}\"/>"));
                 tags.push(format!("<meta name=\"twitter:image\" content=\"{}\"/>", encode_html(&image_url)));
             }
-            PostType::Video | PostType::Flash | PostType::Document => {
+            PostType::Video | PostType::Document => {
                 tags.extend(thumbnail_image_tags(config, site_base, &post_hash));
             }
         },
@@ -494,7 +494,6 @@ fn post_type_word(post_type: PostType) -> &'static str {
         PostType::Image => "image",
         PostType::Animation => "animation",
         PostType::Video => "video",
-        PostType::Flash => "flash",
         PostType::Document => "document",
     }
 }

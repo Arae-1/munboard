@@ -159,7 +159,6 @@ pub fn verify_magic_bytes(path: &Path, mime_type: MimeType) -> ApiResult<()> {
         MimeType::Webp => magic.starts_with(b"RIFF") && magic.len() >= 12 && &magic[8..12] == b"WEBP",
         MimeType::Mp4 | MimeType::Mov | MimeType::Avif => magic.len() >= 8 && &magic[4..8] == b"ftyp",
         MimeType::Webm => magic.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]),
-        MimeType::Swf => magic.starts_with(b"FWS") || magic.starts_with(b"CWS"),
         MimeType::Pdf => magic.starts_with(b"%PDF"),
     };
 

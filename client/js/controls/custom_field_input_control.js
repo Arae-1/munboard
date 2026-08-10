@@ -109,14 +109,17 @@ class CustomFieldInputControl extends events.EventTarget {
 
     _addCurrent() {
         const name = this._nameInputNode.value.trim();
-        const value = parseInt(this._valueInputNode.value, 10);
+        const rawValue = this._valueInputNode.value.trim();
+        const value = /^\d+$/.test(rawValue) ? Number(rawValue) : NaN;
 
         if (!name) {
             return;
         }
 
         if (isNaN(value)) {
-            this._valueInputNode.setCustomValidity("Value must be a number");
+            this._valueInputNode.setCustomValidity(
+                "Value must be a non-negative integer"
+            );
             this._valueInputNode.reportValidity();
             return;
         }

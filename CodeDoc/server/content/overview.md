@@ -7,7 +7,6 @@
 - [decode.md](decode.md)
 - [download.md](download.md)
 - [embed.md](embed.md)
-- [flash.md](flash.md)
 - [hash.md](hash.md)
 - [signature.md](signature.md)
 - [thumbnail.md](thumbnail.md)
@@ -15,7 +14,7 @@
 
 ## Purpose
 
-The content module handles the full upload and processing pipeline for post content. It manages downloading, decoding, hashing, thumbnail generation, Flash processing, signature extraction, and caching.
+The content module handles the full upload and processing pipeline for post content. It manages downloading, decoding, hashing, thumbnail generation, signature extraction, and caching.
 
 The embed page documents the OpenGraph embed pages served for post links. The embed module renders post previews for chat applications and crawlers.
 
@@ -25,8 +24,8 @@ The embed page documents the OpenGraph embed pages served for post links. The em
 2. Content is saved to disk in the temporary uploads directory.
 3. The file is decoded to produce a representative image.
 4. Checksums (BLAKE3 and MD5) are computed from the file.
-5. A post type is detected (image, animation, video, flash, document).
-6. Audio presence is checked for videos and Flash files.
+5. A post type is detected (image, animation, video, document).
+6. Audio presence is checked for videos.
 7. An image signature is computed for similarity search.
 8. A thumbnail is generated.
 9. Properties are cached in memory to avoid recomputation.
@@ -59,7 +58,7 @@ Stores all computed properties for a piece of content:
 - `thumbnail`: The generated thumbnail image.
 - `width`, `height`: Image dimensions.
 - `mime_type`: The MIME type of the content.
-- `post_type`: Detected post type (image, video, flash, etc.).
+- `post_type`: Detected post type (image, video, animation, document, etc.).
 - `file_size`: Size in bytes.
 - `flags`: Post flags (e.g., has sound).
 
@@ -77,8 +76,8 @@ The full property computation without cache interaction:
 1. Gets file size from the filesystem.
 2. Computes BLAKE3 and MD5 checksums in a single pass.
 3. Determines MIME type from the upload token.
-4. Detects post type (image, video, animation, flash, document).
-5. Checks for audio in videos and SWF files.
+4. Detects post type (image, video, animation, document).
+5. Checks for audio in videos.
 6. Sets the Sound flag if audio is present.
 7. Decodes a representative image.
 8. Computes the image signature.
@@ -90,16 +89,12 @@ The full property computation without cache interaction:
 ### `representative_image`
 Returns a representative image for the given content based on MIME type:
 - **BMP, GIF, JPEG, PNG, WebP**: Decoded with the `image` crate.
-- **SWF**: Searches Flash tags for the largest decodable image. Falls back to FFmpeg for video frames.
 - **AVIF**: Decoded via FFmpeg as an RGBA image.
 - **PDF**: Rendered via `pdftoppm` (Poppler) as a PNG.
 - **MOV, MP4, WebM**: Uses FFmpeg's thumbnail filter to extract a representative video frame.
 
 ### `video_has_audio`
 Uses FFmpeg to check if a video file contains audio streams. Streams the first 0 seconds (no actual decode) and checks for parsed audio stream events.
-
-### `swf_has_audio`
-Parses the SWF file and checks for any sound-related tags: DefineButtonSound, DefineSound, SoundStreamBlock, SoundStreamHead, SoundStreamHead2, StartSound, StartSound2.
 
 ### `detect_post_type`
 Determines the post type from a file:
@@ -108,25 +103,16 @@ Determines the post type from a file:
 - **WebP**: Uses the decoder's `has_animation()` method.
 - **BMP, JPEG, PNG**: Always image.
 - **MP4, MOV, WebM**: Always video.
-- **SWF**: Always flash.
 - **PDF**: Always document.
 
 ### `ffmpeg_frame`
 Uses FFmpeg to extract a single frame from a file:
-- For video/flash: Uses the `thumbnail` filter with RGB24 format. Limits to first 30 seconds.
+- For video: Uses the `thumbnail` filter with RGB24 format. Limits to first 30 seconds.
 - For images: Uses RGBA format.
 - Returns a single `OutputFrame` event's data as a DynamicImage.
 
 ### `pdf_representative_image`
 Renders the first page of a PDF to PNG using `pdftoppm` at 100 DPI. Falls back to a neutral 1x1 pixel image on any error.
-
-### `flash_image`
-Searches SWF tags for decodable images:
-- **DefineBits**: JPEG with optional encoding tables from JpegTables tag.
-- **DefineBitsLossless**: Zlib-compressed bitmap (palettized or raw RGB).
-- **DefineBitsJpeg2/3**: JPEG data, possibly with PNG/GIF data or alpha channel.
-- Falls back to FFmpeg frame extraction if no images found.
-- Sorts images by effective thumbnail width for best quality selection.
 
 ### Animation Detection
 - `avif_is_animated`: Uses FFmpeg to extract 2 frames from each video stream. Returns true if more than one frame is produced.
@@ -155,34 +141,6 @@ Checks if an IP address is private or otherwise unreachable from the public inte
 
 ### `validate_url`
 Resolves the URL's hostname via DNS and checks every resolved IP against `is_private_ip`. Blocks the URL if any resolved address is private. Only permits HTTP and HTTPS schemes.
-
-## Flash Processing (`flash.rs`)
-
-Code adapted from the Ruffle Flash emulator (MIT licensed). Handles decoding various Flash image formats.
-
-### `determine_jpeg_tag_format`
-Identifies the image format inside a DefineBitsJPEG2/3 tag by checking magic bytes:
-- JPEG: Starts with `0xFF 0xD8` or `0xFF 0xD9 0xFF 0xD8`.
-- PNG: Starts with `0x89 0x50 0x4E 0x47`.
-- GIF: Starts with `GIF8`.
-
-### `decode_define_bits_jpeg`
-Decodes JPEG/PNG/GIF data from DefineBitsJPEG2/3 tags. For true JPEG data with alpha (DefineBitsJPEG3), applies pre-multiplied alpha channel. Clamps color channels to alpha value to fix incorrect SWF encodings.
-
-### `glue_tables_to_jpeg`
-Combines JPEG encoding tables from a JpegTables tag with data from a DefineBits tag. Removes the trailing EOI marker from the tables and the leading SOI marker from the data before concatenation.
-
-### `remove_invalid_jpeg_data`
-Removes the invalid `0xFF 0xD9 0xFF 0xD8` (EOI+SOI) marker sequence from SWF JPEG data. This sequence can appear anywhere before the SOF marker in older SWF files. Also appends an EOI marker if missing.
-
-### `decode_define_bits_lossless`
-Decodes DefineBitsLossless tags (version 1 or 2):
-- **RGB15 format**: 15-bit RGB, packed as 16-bit values. Unpacks to RGBA.
-- **RGB32 format**: 32-bit ARGB, reordered to RGBA.
-- **ColorMap8 format**: Palettized with up to 256 colors.
-
-### `decompress_zlib`
-Decompresses zlib-compressed data with a maximum output size of 128 MB.
 
 ## Hash (`hash.rs`)
 
@@ -312,5 +270,4 @@ Validates that the first bytes of a file match the expected magic bytes for its 
 - WebP: `RIFF....WEBP`
 - MP4/MOV/AVIF: `....ftyp`
 - WebM: `1A 45 DF A3`
-- SWF: `FWS` or `CWS`
 - PDF: `%PDF`

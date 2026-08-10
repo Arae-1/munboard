@@ -111,7 +111,7 @@ fn verify_visibility(conn, ctx, post_id) -> ApiResult<()>
 | `note-text` | Note text (wildcards allowed) |
 | `relation-count` | Number of relations |
 | `feature-count` | Number of times featured |
-| `type` | Content type: `image`, `animation`, `flash`, `video`, or `document` |
+| `type` | Content type: `image`, `animation`, `video`, or `document` |
 | `content-checksum` | BLAKE3 checksum |
 | `flag` | Flag: `loop` or `sound` |
 | `source` | Source string |
@@ -620,7 +620,7 @@ fn verify_visibility(conn, ctx, post_id) -> ApiResult<()>
 | `contentUrl` | `Option<Url>` | URL to fetch new content |
 | `thumbnailToken` | `Option<UploadToken>` | Upload token for new custom thumbnail |
 | `thumbnailUrl` | `Option<Url>` | URL to fetch custom thumbnail |
-| `customFields` | `Option<HashMap<SmallString, i64>>` | Custom field map (send `{}` to clear) |
+| `customFields` | `Option<HashMap<SmallString, i64>>` | Custom field map (send `{}` to clear). Values must be non-negative integers (0 is allowed; negative values are rejected with 422). |
 
 **Path Parameters:**
 

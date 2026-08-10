@@ -93,7 +93,7 @@ The full API response shape for a post. This is the largest resource struct with
 | `canvas_width` | `Option<i32>` | `post.width` | Image width in pixels |
 | `canvas_height` | `Option<i32>` | `post.height` | Image height in pixels |
 | `safety` | `Option<PostSafety>` | `post.safety` | Safety rating (safe/sketchy/unsafe) |
-| `type_` | `Option<PostType>` | `post.type_` | Content type (image/video/animation/flash) |
+| `type_` | `Option<PostType>` | `post.type_` | Content type (image/video/animation/document) |
 | `mime_type` | `Option<MimeType>` | `post.mime_type` | Exact MIME format |
 | `checksum` | `Option<String>` | `post.checksum` | BLAKE3 hash, hex-encoded via `hex::encode` |
 | `checksum_md5` | `Option<String>` | `post.checksum_md5` | MD5 hash, hex-encoded via `hex::encode` |

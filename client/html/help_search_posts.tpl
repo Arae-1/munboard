@@ -76,7 +76,7 @@
         </tr>
         <tr>
             <td><code>type</code></td>
-            <td>type of posts (can be either <code>image</code>, <code>animation</code>, <code>flash</code>, or <code>video</code> or <code>document</code> (or <code>pdf</code>))</td>
+            <td>type of posts (can be either <code>image</code>, <code>animation</code>, <code>video</code>, or <code>document</code> (or <code>pdf</code>))</td>
         </tr>
         <tr>
             <td><code>content-checksum</code></td>

@@ -68,7 +68,6 @@ An exhaustive enum covering all possible API error conditions. Each variant has 
 | `DeleteDefault(ResourceType)` | `"Cannot delete default {0}"` | Direct |
 | `FileTooLarge(ByteSize)` | `"File exceeds maximum size of {0}"` (`{0}` displays as a human-readable size) | Direct |
 | `MetadataTooLarge(ByteSize)` | `"Metadata exceeds maximum size of {0}"` (`{0}` displays as a human-readable size) | Direct |
-| `EmptySwf` | `"SWF has no decodable images"` | Direct |
 | `EmptyVideo` | `"Video file has no frames"` | Direct |
 | `ExpressionFailsRegex(SmallString, RegexType)` | `"'{0}' does not match on {1} regex"` | Direct |
 | `ExtensionRejection` | (delegates to inner) | `axum::extract::rejection::ExtensionRejection` |
@@ -100,6 +99,7 @@ An exhaustive enum covering all possible API error conditions. Each variant has 
 | `MissingSmtpInfo` | `"Missing smtp info"` | Direct |
 | `Multipart` | (delegates to inner) | `axum::extract::multipart::MultipartError` |
 | `MultipartRejection` | (delegates to inner) | `axum::extract::multipart::MultipartRejection` |
+| `NegativeCustomFieldValue(SmallString)` | `"Custom field '{0}' must be a non-negative integer"` | Direct |
 | `NoNamesGiven(ResourceType)` | `"{0} needs at least one name"` | Direct |
 | `NotAnInteger` | (delegates to inner) | `std::num::ParseIntError` |
 | `NotFound(ResourceType)` | `"{0} not found"` | Direct |
@@ -112,7 +112,6 @@ An exhaustive enum covering all possible API error conditions. Each variant has 
 | `ResourceModified` | `"Someone else modified this in the meantime. Please try again."` | Direct |
 | `SelfMerge(ResourceType)` | `"Cannot merge {0} with itself"` | Direct |
 | `StdIo` | (delegates to inner) | `std::io::Error` |
-| `SwfDecoding` | (delegates to inner) | `swf::error::Error` |
 | `TaskJoin` | (delegates to inner) | `tokio::task::JoinError` |
 | `UnauthorizedPasswordReset` | `"Password reset token is invalid"` | Direct |
 | `UnsupportedExtension` | (delegates to inner) | `crate::model::enums::ParseExtensionError` |
@@ -131,7 +130,7 @@ An exhaustive enum covering all possible API error conditions. Each variant has 
 | **404 NOT FOUND** | `NotFound` |
 | **409 CONFLICT** | `AlreadyExists`, `ResourceModified` |
 | **415 UNSUPPORTED MEDIA TYPE** | `UnsupportedExtension` |
-| **422 UNPROCESSABLE ENTITY** | `BlockedUrl`, `CyclicDependency`, `DeleteDefault`, `EmptySwf`, `EmptyVideo`, `ExpressionFailsRegex`, `FfmpegError`, `FileTooLarge`, `FrameBufferMismatch`, `FromStr`, `Image`, `InvalidEmail`, `InvalidEmailAddress`, `InvalidSort`, `InvalidTime`, `InvalidUploadToken`, `InvalidUserRank`, `MetadataTooLarge`, `NoNamesGiven`, `NotAnInteger`, `SelfMerge`, `SwfDecoding` |
+| **422 UNPROCESSABLE ENTITY** | `BlockedUrl`, `CyclicDependency`, `DeleteDefault`, `EmptyVideo`, `ExpressionFailsRegex`, `FfmpegError`, `FileTooLarge`, `FrameBufferMismatch`, `FromStr`, `Image`, `InvalidEmail`, `InvalidEmailAddress`, `InvalidSort`, `InvalidTime`, `InvalidUploadToken`, `InvalidUserRank`, `MetadataTooLarge`, `NegativeCustomFieldValue`, `NoNamesGiven`, `NotAnInteger`, `SelfMerge` |
 | **500 INTERNAL SERVER ERROR** | `FailedEmailTransport`, `FailedQuery`, `InvalidHeader`, `MissingSmtpInfo`, `StdIo`, `TaskJoin`, plus `JsonSerialization` with `Io`/`Eof` category, plus `FailedAuthentication::FailedQuery` |
 | **503 SERVICE UNAVAILABLE** | `FailedConnection`, `FailedAuthentication::FailedConnection` |
 
@@ -150,6 +149,7 @@ Returns a human-readable category string for each error variant. Examples:
 - `ResourceModified` → `"Resource Modified"`
 - `FileTooLarge(_)` → `"File Too Large"`
 - `MetadataTooLarge(_)` → `"Metadata Too Large"`
+- `NegativeCustomFieldValue(_)` → `"Negative Custom Field Value"`
 - `QueryTooLong(_)` → `"Query Too Long"`
 
 Every variant has a corresponding category string.

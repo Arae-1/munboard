@@ -1,0 +1,5 @@
+{
+    "description": "Custom field 'foo' must be a non-negative integer",
+    "name": "NegativeCustomFieldValue",
+    "title": "Negative Custom Field Value"
+}

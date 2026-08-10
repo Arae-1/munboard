@@ -92,7 +92,6 @@ fn compute_properties_no_cache(ctx: &Ctx, token: UploadToken) -> ApiResult<Cache
     let has_sound = match post_type {
         PostType::Image | PostType::Animation | PostType::Document => false,
         PostType::Video => decode::video_has_audio(&temp_path)?,
-        PostType::Flash => decode::swf_has_audio(&temp_path)?,
     };
     let flags = if has_sound {
         PostFlags::new_with(PostFlag::Sound)
@@ -100,7 +99,7 @@ fn compute_properties_no_cache(ctx: &Ctx, token: UploadToken) -> ApiResult<Cache
         PostFlags::new()
     };
 
-    let image = decode::representative_image(&ctx.config, &temp_path, mime_type)?;
+    let image = decode::representative_image(&temp_path, mime_type)?;
 
     Ok(CachedProperties {
         token,

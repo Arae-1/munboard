@@ -178,8 +178,8 @@ All database-backed enums use `#[repr(i16)]` and serialize as `SmallInt`:
 |------|----------|------------|
 | `UserRank` | Anonymous, Restricted, Regular, Power, Moderator, Administrator | 0–5 |
 | `PostSafety` | Safe, Sketchy, Unsafe | 0–2 |
-| `PostType` | Image, Animation, Video, Flash, Document | 0–4 |
-| `MimeType` | Bmp, Gif, Jpeg, Png, Webp, Mp4, Mov, Webm, Swf, Avif, Pdf | 0–10 |
+| `PostType` | Image, Animation, Video, Document | 0–3 |
+| `MimeType` | Bmp, Gif, Jpeg, Png, Webp, Mp4, Mov, Webm, Avif, Pdf | 0–9 |
 | `AvatarStyle` | Gravatar, Manual | 0–1 |
 | `ResourceOperation` | Created, Modified, Merged, Deleted | 0–3 |
 | `ResourceType` | Comment, CustomField, Pool, PoolCategory, Post, Tag, TagCategory, TagImplication, TagSuggestion, User, UserToken | 0–10 |

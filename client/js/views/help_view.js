@@ -19,6 +19,7 @@ const subsectionTemplates = {
         users: views.getTemplate("help-search-users"),
         tags: views.getTemplate("help-search-tags"),
         pools: views.getTemplate("help-search-pools"),
+        "custom-fields": views.getTemplate("help-search-custom-fields"),
     },
 };
 

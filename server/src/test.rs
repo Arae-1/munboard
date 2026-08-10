@@ -8,6 +8,8 @@ use crate::content::{decode, signature};
 use crate::db::Connection;
 use crate::filesystem::Directory;
 use crate::model::comment::{NewComment, NewCommentScore};
+use crate::model::custom_field::NewCustomField;
+use crate::model::post_custom_field::PostCustomField;
 use crate::model::enums::{
     AvatarStyle, MimeType, PostFlag, PostFlags, PostSafety, PostType, ResourceType, Score, UserRank,
 };
@@ -20,10 +22,10 @@ use crate::model::tag::{NewTag, NewTagName, TagImplication, TagSuggestion};
 use crate::model::tag_category::NewTagCategory;
 use crate::model::user::NewUser;
 use crate::schema::{
-    comment, comment_score, pool, pool_category, pool_category_statistics, pool_name, pool_post, pool_statistics, post,
-    post_favorite, post_feature, post_note, post_relation, post_score, post_signature, post_statistics, post_tag,
-    snapshot, tag, tag_category, tag_category_statistics, tag_implication, tag_name, tag_statistics, tag_suggestion,
-    user, user_token,
+    comment, comment_score, custom_field, pool, pool_category, pool_category_statistics, pool_name, pool_post,
+    pool_statistics, post, post_custom_field, post_favorite, post_feature, post_note, post_relation, post_score,
+    post_signature, post_statistics, post_tag, snapshot, tag, tag_category, tag_category_statistics, tag_implication,
+    tag_name, tag_statistics, tag_suggestion, user, user_token,
 };
 use crate::string::SmallString;
 use crate::time::DateTime;
@@ -639,7 +641,7 @@ fn create_posts(conn: &mut PgConnection, config: &Config) -> AdminResult<()> {
 
         // Simulate uploads
         let image_path = media_path("1_pixel.png");
-        let image = decode::representative_image(config, &image_path, MimeType::Png).unwrap();
+        let image = decode::representative_image(&image_path, MimeType::Png).unwrap();
         let signature = signature::compute(&image);
         let words = signature::generate_indexes(&signature);
 
@@ -779,6 +781,40 @@ fn populate_database(conn: &mut PgConnection, config: &Config) -> AdminResult<()
         })
         .collect();
     new_comment_scores.insert_into(comment_score::table).execute(conn)?;
+
+    // Add custom fields
+    NewCustomField {
+        name: "foo",
+        description: "",
+        color: "#ff0000",
+    }
+    .insert_into(custom_field::table)
+    .execute(conn)?;
+    NewCustomField {
+        name: "bar",
+        description: "",
+        color: "#ff0000",
+    }
+    .insert_into(custom_field::table)
+    .execute(conn)?;
+
+    // Add custom field values
+    let new_post_custom_fields: Vec<_> = [("foo", 1), ("bar", 2)]
+        .into_iter()
+        .map(|(name, value)| {
+            let custom_field_id: i64 = custom_field::table
+                .select(custom_field::id)
+                .filter(custom_field::name.eq(name))
+                .first(conn)
+                .expect("Custom field must exist");
+            PostCustomField {
+                post_id: 1,
+                custom_field_id,
+                value,
+            }
+        })
+        .collect();
+    new_post_custom_fields.insert_into(post_custom_field::table).execute(conn)?;
 
     Ok(())
 }

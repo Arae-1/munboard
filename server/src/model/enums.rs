@@ -70,7 +70,6 @@ pub enum PostType {
     Image,
     Animation,
     Video,
-    Flash,
     Document,
 }
 
@@ -108,8 +107,6 @@ pub enum MimeType {
     Mov,
     #[serde(rename = "video/webm")]
     Webm,
-    #[serde(rename = "application/x-shockwave-flash")]
-    Swf,
     #[serde(rename = "image/avif")]
     Avif,
     #[serde(rename = "application/pdf")]
@@ -130,7 +127,6 @@ impl MimeType {
             "mov" | "movie" | "qt" => Ok(Self::Mov),
             "webm" => Ok(Self::Webm),
             "webp" => Ok(Self::Webp),
-            "swf" => Ok(Self::Swf),
             "pdf" => Ok(Self::Pdf),
             _ => Err(ParseExtensionError(extension.into())),
         }
@@ -155,7 +151,6 @@ impl MimeType {
             Self::Mp4 => "mp4",
             Self::Mov => "mov",
             Self::Webm => "webm",
-            Self::Swf => "swf",
             Self::Pdf => "pdf",
         }
     }
@@ -166,7 +161,6 @@ impl FromStr for MimeType {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "application/x-shockwave-flash" | "application/vnd.adobe.flash.movie" => Ok(MimeType::Swf),
             "image/avif" => Ok(MimeType::Avif),
             "image/bmp" => Ok(MimeType::Bmp),
             "image/gif" => Ok(MimeType::Gif),

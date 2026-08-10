@@ -17,14 +17,13 @@ This module is the top-level content processing module. It defines the `Content`
 
 ## Module Declarations
 
-All modules are public except `flash` (private implementation detail):
+All modules are public:
 
 | Module | Visibility | Purpose |
 |--------|-----------|---------|
 | `cache` | `pub` | Ring buffer cache for content properties |
 | `decode` | `pub` | Image/video decoding |
 | `download` | `pub` | HTTP content download |
-| `flash` | private | SWF/Flash processing |
 | `hash` | `pub` | Content hashing |
 | `signature` | `pub` | Image signature computation |
 | `thumbnail` | `pub` | Thumbnail generation |
@@ -70,7 +69,7 @@ Computes a thumbnail for the content. Consumes `self`.
 1. Call `self.save(config).await` to ensure content is on disk. Get the `token`.
 2. Construct the file path: `token.path(config)`.
 3. Use `tokio::task::block_in_place` to run CPU-bound work without blocking the async runtime:
-   - Call `decode::representative_image(config, &temp_path, token.mime_type())` to get a decoded image.
+   - Call `decode::representative_image(&temp_path, token.mime_type())` to get a decoded image.
    - Call `thumbnail::create(config, &image, thumbnail_type)` to generate the thumbnail.
 4. Return the `DynamicImage` thumbnail.
 

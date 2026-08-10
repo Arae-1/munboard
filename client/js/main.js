@@ -46,15 +46,6 @@ if (settings.get().darkTheme) {
     document.body.classList.add("darktheme");
 }
 
-window.RufflePlayer = window.RufflePlayer || {};
-window.RufflePlayer.config = {
-    "polyfills": true,
-    "autoplay": "off",
-    "warnOnUnsupportedContent": false,
-    "showSwfDownload": true,
-    "splashScreen": false,
-};
-
 Promise.resolve()
     .then(() => api.fetchConfig())
     .then(
@@ -122,8 +113,6 @@ Promise.resolve()
         if (settings.get().darkTheme) {
             document.body.classList.add("darktheme");
         }
-
-        window.RufflePlayer.config.autoplay = settings.get().autoplayVideos ? "auto" : "off"
     })
     .then(() => api.loginFromCookies())
     .then(

@@ -35,7 +35,7 @@ Sets the notes overlay to passive edit mode. Renders the template with comprehen
 | `post_edit_source` | Source textarea |
 | `post_edit_tag` | Tag input |
 | `post_edit_relation` | Relations input |
-| `post_edit_note` | Note editing controls (hidden for video/flash) |
+| `post_edit_note` | Note editing controls (hidden for video) |
 | `post_edit_flag` | Video flag checkboxes |
 | `post_edit_content` | Content file dropper |
 | `post_edit_thumbnail` | Thumbnail file dropper |

@@ -129,7 +129,6 @@ The client and server share a `/data` volume for media files. The server writes 
   - [decode.md](server/content/decode.md) — Image/video decoding
   - [download.md](server/content/download.md) — HTTP content download
   - [embed.md](server/content/embed.md) — OpenGraph embed pages for post links
-  - [flash.md](server/content/flash.md) — Flash/SWF processing
   - [hash.md](server/content/hash.md) — Content hashing (blake3, MD5, SHA1, SHA256)
   - [signature.md](server/content/signature.md) — Image signature for reverse search
   - [thumbnail.md](server/content/thumbnail.md) — Thumbnail generation
@@ -349,7 +348,7 @@ This is the request flow for a typical API call:
 Tags are labels applied to posts. Each tag has one or more names (aliases). The first name is the primary name. Tags belong to tag categories (for example, "artist", "character", "meta"). Tags can imply other tags. Tags can suggest other tags.
 
 ### Posts
-A post is an uploaded media file. It can be an image, animation, video, Flash animation, or document. Posts have safety ratings, dimensions, checksums, descriptions, tags, notes, relations to other posts, custom fields, scores, and favorites.
+A post is an uploaded media file. It can be an image, animation, video, or document. Posts have safety ratings, dimensions, checksums, descriptions, tags, notes, relations to other posts, custom fields, scores, and favorites.
 
 ### Pools
 A pool is an ordered collection of posts. Pools belong to pool categories. Each pool has names, a description, and a launch date.
@@ -361,7 +360,7 @@ Comments are text messages attached to posts. Users can create, edit, delete, an
 A user is an account with a name, password, email, rank, and avatar. User ranks control privileges: Anonymous, Restricted, Regular, Power, Moderator, Administrator.
 
 ### Custom Fields
-Custom fields are named numeric values assigned to posts. Each field has a name, description, and color. Users can create custom field definitions. Posts can have custom field values.
+Custom fields are named non-negative integer values assigned to posts (0 is allowed; negative values are rejected). Each field has a name, description, and color. Users can create custom field definitions. Posts can have custom field values.
 
 ### Snapshots
 Snapshots record every change to database resources. They store the user who made the change, the operation type, the resource type and ID, and JSON data. The snapshot system gives a full audit trail.

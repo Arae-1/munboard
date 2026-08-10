@@ -8,7 +8,7 @@
                         href='<%= ctx.canViewPosts ? ctx.getPostUrl(post.id, ctx.parameters) : '' %>'>
                         <%= ctx.makeThumbnail(post.thumbnailUrl) %>
                         <span class='type' data-type='<%- post.type %>'>
-                            <% if (post.type == 'video' || post.type == 'flash' || post.type == 'animation') { %>
+                            <% if (post.type == 'video' || post.type == 'animation') { %>
                                 <span class='icon'><i class='fa fa-film'></i></span>
                             <% } %>
                             <%- post.type %>

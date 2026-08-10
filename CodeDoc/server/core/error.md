@@ -6,7 +6,7 @@ This file defines `ErrorName`, an exhaustive enum of all named error types in th
 
 ## Enum: `ErrorName`
 
-A flat enum with 218 variants representing every distinct error condition in the system. Variants derive `Serialize` and `ToSchema`.
+A flat enum with 213 variants representing every distinct error condition in the system. Variants derive `Serialize` and `ToSchema`.
 
 **Categories of error names:**
 
@@ -21,7 +21,6 @@ A flat enum with 218 variants representing every distinct error condition in the
 | Content processing | `FFmpegError`, `GenericImageError`, `UnsupportedFormat`, `EmptyVideo` |
 | Email | `EmailMissingTo`, `EmailAddressInvalidDomain` |
 | JSON parsing | `JsonSyntaxError`, `JsonUnexpectedEOF` |
-| SWF | `SwfParseError`, `SwfUnsupported` |
 | General | `DeserializationError`, `SerializationError`, `RequestError` |
 
 ## Trait: `ErrorKind`
@@ -64,9 +63,8 @@ Converts any error type to its corresponding `ErrorName`.
 | `std::env::VarError` | Environment variable errors | `NotPresent`, `NotUnicode` |
 | `std::io::ErrorKind` | I/O errors | Exhaustive mapping of all standard I/O error kinds |
 | `std::num::IntErrorKind` | Integer parse errors | `EmptyValue`, `InvalidDigit`, `PosOverflow`, `NegOverflow`, `ZeroNotAllowed` |
-| `swf::error::Error` | SWF decoding errors | `Avm1ParseError`, `InvalidData`, `SwfParseError`, `IoError`, `Unsupported` |
 | `tokio::task::JoinError` | Async task errors | `TaskPanicked` if panic, `TaskCancelled` otherwise |
-| `crate::api::error::ApiError` | Application-level errors | Exhaustive mapping; delegates to inner error `kind()` where applicable. Size-limit and query-length variants map directly: `FileTooLarge` → `ErrorName::FileTooLarge`, `MetadataTooLarge` → `ErrorName::MetadataTooLarge`, `QueryTooLong` → `ErrorName::QueryTooLong`. |
+| `crate::api::error::ApiError` | Application-level errors | Exhaustive mapping; delegates to inner error `kind()` where applicable. Size-limit and query-length variants map directly: `FileTooLarge` → `ErrorName::FileTooLarge`, `MetadataTooLarge` → `ErrorName::MetadataTooLarge`, `NegativeCustomFieldValue` → `ErrorName::NegativeCustomFieldValue`, `QueryTooLong` → `ErrorName::QueryTooLong`. |
 
 ## Pattern
 

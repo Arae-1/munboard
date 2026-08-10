@@ -71,8 +71,8 @@ An `ActionTable<UserRank>` — maps every `Action` (e.g., `PostCreate`, `TagEdit
 
 `error.rs` defines:
 
-- **`ErrorName`** — Exhaustive enum of 218 named error variants for machine-readable error classification in API responses and OpenAPI docs.
-- **`ErrorKind` trait** — Maps library errors (`diesel`, `image`, `lettre`, `axum`, `serde_json`, `swf`, etc.) to `ErrorName`. Uses a double `.kind().kind()` pattern where outer errors wrap inner errors that also implement `ErrorKind`.
+- **`ErrorName`** — Exhaustive enum of 213 named error variants for machine-readable error classification in API responses and OpenAPI docs.
+- **`ErrorKind` trait** — Maps library errors (`diesel`, `image`, `lettre`, `axum`, `serde_json`, etc.) to `ErrorName`. Uses a double `.kind().kind()` pattern where outer errors wrap inner errors that also implement `ErrorKind`.
 
 ## File System Abstraction
 

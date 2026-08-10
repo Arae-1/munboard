@@ -4,7 +4,7 @@
 
 Manages an inline custom field editor. Replaces a hidden host node with an edit area that contains:
 - A name input with autocomplete (`cf-name`)
-- A value input for numeric values (`cf-value`)
+- A value input for non-negative integer values (`cf-value`)
 - An "Add" / "Update" button
 - A list (`ul.compact-custom-fields`) of current custom fields
 
@@ -12,7 +12,7 @@ Manages an inline custom field editor. Replaces a hidden host node with an edit 
 
 ### `constructor(hostNode, customFields, customFieldColors)`
 - `hostNode`: The hidden placeholder element.
-- `customFields`: An object mapping custom field names to numeric values.
+- `customFields`: An object mapping custom field names to non-negative integer values.
 - `customFieldColors`: An object mapping names to CSS color strings.
 
 Calls `CustomFieldAutoCompleteControl.ensureFieldNamesLoaded()` to preload the field name cache.
@@ -39,7 +39,7 @@ Hides the original host node and inserts the edit area after it. Renders existin
 ### `_addCurrent()`
 Validates the name and value inputs:
 1. Name must not be empty.
-2. Value must be a valid number (NaN shows "Value must be a number").
+2. Value must be a non-negative integer (digits only; 0 allowed). Empty, non-numeric, negative, or floating point input fails this check and shows "Value must be a non-negative integer". The previous silent `parseInt` truncation of floats is gone.
 3. Name must be a valid custom field name (checked via `CustomFieldAutoCompleteControl.isValidFieldName`). Shows "Custom field does not exist" if invalid.
 
 If valid, updates or creates the list item. Stores the selected color. Updates the `customFields` and `customFieldColors` objects. Exits edit mode, focuses the name input, and dispatches a `change` event.
