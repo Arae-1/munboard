@@ -25,7 +25,10 @@ RUN meson setup build \
   && ninja -C build install
 
 WORKDIR /build
-RUN curl -L https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz | tar -xJ
+RUN curl -fL --retry 5 --retry-all-errors --retry-delay 5 --connect-timeout 30 \
+      -o ffmpeg-${FFMPEG_VERSION}.tar.xz \
+      https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz \
+  && tar -xJf ffmpeg-${FFMPEG_VERSION}.tar.xz
 
 WORKDIR /build/ffmpeg-${FFMPEG_VERSION}
 ARG TARGET_CPU
