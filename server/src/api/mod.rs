@@ -11,6 +11,7 @@ use axum::http::StatusCode;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::num::NonZeroI64;
 use std::ops::Deref;
+use std::sync::LazyLock;
 use std::str::FromStr;
 use std::time::Duration;
 use tower_http::timeout::TimeoutLayer;
@@ -146,10 +147,41 @@ impl<F: Into<u64> + FromStr> ResourceParams<F> {
 struct PageParams {
     /// Starting position in the result set
     #[param(example = 0)]
+    #[serde(default, deserialize_with = "deserialize_non_negative_i64")]
     offset: Option<i64>,
     /// Maximum number of results to return
     #[param(value_type = i64, minimum = 1, example = 40)]
+    #[serde(deserialize_with = "deserialize_positive_i64")]
     limit: NonZeroI64,
+}
+
+/// Deserializes `limit` as a positive integer. `NonZeroI64` alone would accept
+/// negative values, which fail later with an internal database error.
+fn deserialize_positive_i64<'de, D>(deserializer: D) -> Result<NonZeroI64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = i64::deserialize(deserializer)?;
+    NonZeroI64::new(value)
+        .filter(|&value| value.get() > 0)
+        .ok_or_else(|| {
+            serde::de::Error::invalid_value(serde::de::Unexpected::Signed(value), &"a nonzero i64")
+        })
+}
+
+/// Deserializes `offset` as a non-negative integer. Absent values remain `None`.
+fn deserialize_non_negative_i64<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = i64::deserialize(deserializer)?;
+    if value < 0 {
+        return Err(serde::de::Error::invalid_value(
+            serde::de::Unexpected::Signed(value),
+            &"a non-negative i64",
+        ));
+    }
+    Ok(Some(value))
 }
 
 /// A result of search operation that doesn't involve paging.
@@ -197,6 +229,14 @@ pub(crate) const DISABLE_VERSION_CHECK_ENV: &str = "OXIBOORU_DISABLE_VERSION_CHE
 fn verify_version(current_version: DateTime, client_version: DateTime) -> ApiResult<()> {
     // Disabled at runtime when `OXIBOORU_DISABLE_VERSION_CHECK` is set
     if std::env::var_os(DISABLE_VERSION_CHECK_ENV).is_some() {
+        // Warn once so a production misconfiguration is visible in logs. The
+        // test harness sets this variable deliberately, so skip test builds.
+        static WARNED: LazyLock<()> = LazyLock::new(|| {
+            tracing::warn!("{DISABLE_VERSION_CHECK_ENV} is set; the optimistic concurrency check is disabled");
+        });
+        if cfg!(not(test)) {
+            LazyLock::force(&WARNED);
+        }
         return Ok(());
     }
 

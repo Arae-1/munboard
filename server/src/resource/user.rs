@@ -79,8 +79,8 @@ pub struct UserInfo {
     version: Option<DateTime>,
     /// The user name.
     name: Option<SmallString>,
-    /// The user email. It is available only if the request is authenticated by the same user,
-    /// or the authenticated user can change the email. If it's unavailable, the server returns `false`.
+    /// The user email. It is available only if the request is authenticated by the same user.
+    /// If it's unavailable, the server returns `false`.
     /// If the user hasn't specified an email, the server returns `null`.
     email: Option<PrivateData<Option<SmallString>>>,
     /// The user rank, which effectively affects their privileges.

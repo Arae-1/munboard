@@ -1,6 +1,6 @@
 {
     "name": "Character",
-    "color": "default",
+    "color": "#000000",
     "usages": 11,
     "order": 3,
     "default": false

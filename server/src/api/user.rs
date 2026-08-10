@@ -196,9 +196,30 @@ async fn create_impl(
     let salt = SaltString::generate(&mut OsRng);
     let hash = password::hash_password(&ctx.config, &body.password, &salt)?;
 
+    // URL downloads additionally require the downloader power, while
+    // token-based avatars are gated only by the avatar privilege. Capture
+    // the flag before Content::new consumes body.avatar_url.
+    let avatar_from_url = body.avatar_url.is_some();
     let avatar_style = body.avatar_style.unwrap_or_default();
     let custom_avatar = match Content::new(body.avatar_token, body.avatar_url) {
-        Some(content) => Some(content.thumbnail(&ctx.config, ThumbnailType::Avatar).await?),
+        Some(content) => {
+            // Verify avatar edit privileges before any avatar download, so
+            // unauthorized requests are rejected before fetching.
+            let action = if creating_self {
+                Action::UserEditSelfAvatar
+            } else {
+                Action::UserEditAnyAvatar
+            };
+            ctx.verify_privilege(action)?;
+
+            // URL fetches need the downloader power in addition to the avatar
+            // privilege; token-based avatars only need the avatar privilege.
+            if avatar_from_url {
+                ctx.verify_privilege(Action::UploadUseDownloader)?;
+            }
+
+            Some(content.thumbnail(&ctx.config, ThumbnailType::Avatar).await?)
+        }
         None if avatar_style == AvatarStyle::Manual => {
             return Err(ApiError::MissingContent(ResourceType::User));
         }
@@ -325,6 +346,12 @@ async fn create(
     match body {
         JsonOrMultipart::Json(payload) => create_impl(ctx, params, payload).await,
         JsonOrMultipart::Multipart(payload) => {
+            // Registration is anonymous, so this check only documents the
+            // intent; the avatar file itself is still gated later in
+            // create_impl. A self-create avatar upload that fails that gate
+            // leaves a temp file bounded by the size cap and drained by the
+            // 10-minute sweep.
+            ctx.verify_privilege(Action::UserCreateSelf)?;
             let decoded_body = upload::extract(&ctx.config, payload, [PartName::Avatar]).await?;
             let metadata = decoded_body.metadata.ok_or(ApiError::MissingMetadata)?;
             let mut new_user: UserCreateBody = serde_json::from_slice(&metadata)?;
@@ -582,6 +609,11 @@ async fn update(
     match body {
         JsonOrMultipart::Json(payload) => update_impl(ctx, username, params, payload).await,
         JsonOrMultipart::Multipart(payload) => {
+            // The multipart form always carries an avatar file, so reject
+            // clients lacking the avatar-edit privilege before the temporary
+            // upload is written to disk. Per-field checks still run in
+            // update_impl afterwards.
+            ctx.verify_privilege(Action::UserEditSelfAvatar)?;
             let decoded_body = upload::extract(&ctx.config, payload, [PartName::Avatar]).await?;
             let metadata = decoded_body.metadata.ok_or(ApiError::MissingMetadata)?;
             let mut user_update: UserUpdateBody = serde_json::from_slice(&metadata)?;
@@ -637,6 +669,12 @@ async fn delete(
             // snapshot afterwards would violate the snapshot.user_id FK.
             snapshot::user::deletion_snapshot(conn, ctx.client, &user)?;
             diesel::delete(user::table.find(user.id)).execute(conn)?;
+
+            // Remove the custom avatar file; a leftover file must not fail
+            // the account deletion, so only log cleanup errors.
+            if let Err(err) = filesystem::delete_custom_avatar(&ctx.config, &user.name) {
+                tracing::warn!("Unable to delete custom avatar for user {}: {err}", user.name);
+            }
             Ok::<_, ApiError>(Json(()))
         })
         .await
@@ -655,7 +693,9 @@ mod test {
     use crate::test::*;
     use crate::time::DateTime;
     use axum::ServiceExt;
+    use axum::body::Bytes;
     use axum::extract::Request;
+    use axum::http::StatusCode;
     use axum::http::header::AUTHORIZATION;
     use axum_test::TestServer;
     use diesel::dsl::exists;
@@ -828,6 +868,10 @@ mod test {
         verify_response("POST /users", "user/create_invalid_avatar_token").await?;
         verify_response("POST /users", "user/create_missing_custom_avatar").await?;
 
+        // Anonymous registration with an avatar must be rejected before any
+        // avatar download or token fetch (M-01 regression test).
+        verify_response_with_user(UserRank::Anonymous, "POST /users", "user/create_avatar_anonymous").await?;
+
         verify_response("PUT /user/regular_user", "user/edit_anonymous").await?;
         verify_response("PUT /user/regular_user", "user/edit_name_clash").await?;
         verify_response("PUT /user/regular_user", "user/edit_email_clash").await?;
@@ -846,6 +890,36 @@ mod test {
         verify_response_with_user(UserRank::Regular, "PUT /user/restricted_user", "user/edit_higher_rank").await?;
 
         reset_sequence(ResourceType::User)?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn update_multipart_requires_privilege() -> ApiResult<()> {
+        // The multipart arm must verify privileges before extracting the
+        // upload, so anonymous clients cannot write temporary files. The file
+        // part is deliberately unparseable, which would yield a 400 if extract
+        // ran before the privilege check.
+        let state = get_state();
+        let (router, _) = crate::api::routes(state).split_for_parts();
+        let app = NormalizePathLayer::trim_trailing_slash().layer(router);
+        let server = TestServer::new(ServiceExt::<Request>::into_make_service(app))
+            .expect("Test server must be constructible");
+
+        let boundary = "test_boundary";
+        let metadata = r#"{"version":"2025-01-17T06:25:08.461692853Z"}"#;
+        let body = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"metadata\"\r\nContent-Type: application/json\r\n\r\n{metadata}\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"avatar\"; filename=\"file\"\r\n\r\nx\r\n--{boundary}--\r\n"
+        );
+        let response = server
+            .put("/user/regular_user")
+            .content_type(&format!("multipart/form-data; boundary={boundary}"))
+            .bytes(Bytes::from(body))
+            .await;
+
+        assert_eq!(response.status_code(), StatusCode::FORBIDDEN);
+        let response_body: Value = serde_json::from_slice(response.as_bytes())?;
+        assert_eq!(response_body["name"], "InsufficientPrivileges");
         Ok(())
     }
 
@@ -918,6 +992,13 @@ mod test {
     #[serial]
     async fn delete_self() -> ApiResult<()> {
         let app_state = get_state();
+
+        // Place a fake custom avatar file; it must be removed with the user
+        // (L-04 regression test).
+        let avatar_path = app_state.config.custom_avatar_path("doomed_user");
+        std::fs::create_dir_all(avatar_path.parent().expect("avatar path has a parent"))?;
+        std::fs::write(&avatar_path, b"fake avatar")?;
+
         let (router, _) = api::routes(app_state).split_for_parts();
         let app = NormalizePathLayer::trim_trailing_slash().layer(router);
         let server = TestServer::new(ServiceExt::<Request>::into_make_service(app))
@@ -949,6 +1030,9 @@ mod test {
         let user_exists: bool = diesel::select(diesel::dsl::exists(user::table.filter(user::name.eq("doomed_user"))))
             .first(&mut conn)?;
         assert!(!user_exists);
+
+        // Custom avatar file was removed with the account
+        assert!(!avatar_path.exists(), "custom avatar file should be removed on user deletion");
 
         // Deletion snapshot exists; its user_id was nulled by the cascade
         let snapshot: Snapshot = snapshot::table

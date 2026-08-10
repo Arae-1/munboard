@@ -1,0 +1,5 @@
+{
+    "description": "'red' does not match on pool category regex",
+    "name": "ExpressionFailsRegex",
+    "title": "Expression Fails Regex"
+}

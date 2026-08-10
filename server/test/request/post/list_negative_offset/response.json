@@ -1,0 +1,5 @@
+{
+    "description": "Failed to deserialize query string: offset: invalid value: integer `-1`, expected a non-negative i64",
+    "name": "FailedToDeserializeQueryString",
+    "title": "Query Rejection"
+}

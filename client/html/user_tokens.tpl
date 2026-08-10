@@ -5,21 +5,28 @@
         <% _.each(ctx.tokens, function(token, index) { %>
         <div class='token-flex-row'>
             <div class='token-flex-column token-flex-labels'>
+                <div class='token-flex-row'>ID:</div>
+                <% if (token.token) { %>
                 <div class='token-flex-row'>Token:</div>
+                <% } %>
                 <div class='token-flex-row'>Note:</div>
                 <div class='token-flex-row'>Created:</div>
                 <div class='token-flex-row'>Expires:</div>
                 <div class='token-flex-row no-wrap'>Last used:</div>
+                <div class='token-flex-row'>Status:</div>
             </div>
             <div class='token-flex-column full-width'>
-                <div class='token-flex-row'><%- token.token %></div>
+                <div class='token-flex-row'><code class='token-id' title='<%= token.id %>'><%= token.id.substring(0, 8) %>&hellip;</code></div>
+                <% if (token.token) { %>
+                <div class='token-flex-row'><code class='token-value'><%- token.token %></code></div>
+                <% } %>
                 <div class='token-flex-row'>
                     <% if (token.note !== null) { %>
                         <%- token.note %>
                     <% } else { %>
                         No note
                     <% } %>
-                    <a class='token-change-note' data-token-id='<%= index %>' href='#'>(change)</a>
+                    <a class='token-change-note' data-token-id='<%= token.id %>' href='#'>(change)</a>
                 </div>
                 <div class='token-flex-row'><%= ctx.makeRelativeTime(token.creationTime) %></div>
                 <div class='token-flex-row'>
@@ -30,12 +37,20 @@
                     <% } %>
                 </div>
                 <div class='token-flex-row'><%= ctx.makeRelativeTime(token.lastUsageTime) %></div>
+                <div class='token-flex-row'>
+                    <% if (token.enabled) { %>
+                        Enabled
+                    <% } else { %>
+                        Disabled
+                    <% } %>
+                    <a class='token-toggle' data-token-id='<%= token.id %>' href='#'>(toggle)</a>
+                </div>
             </div>
         </div>
         <div class='token-flex-row'>
             <div class='token-flex-column full-width'>
                 <div class='token-flex-row'>
-                    <form class='token' data-token-id='<%= index %>'>
+                    <form class='token' data-token-id='<%= token.id %>'>
                         <% if (token.isCurrentAuthToken) { %>
                             <input type='submit' value='Delete and logout'
                                 title='This token is used to authenticate this client, deleting it will force a logout.'/>

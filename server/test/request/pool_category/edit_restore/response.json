@@ -1,6 +1,6 @@
 {
     "name": "Style",
-    "color": "default",
+    "color": "#000000",
     "usages": 2,
     "default": false
 }

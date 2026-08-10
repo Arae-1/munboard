@@ -250,17 +250,34 @@ class Api extends events.EventTarget {
 
     deleteToken(userName, userToken) {
         return new Promise((resolve, reject) => {
-            this.delete("/user-token/" + userName + "/" + userToken, {}).then(
+            // Tokens are addressed by their internal id; resolve it from the
+            // owner's token list, which includes the plaintext token.
+            this.get("/user-tokens/" + userName).then(
                 (response) => {
-                    const options = {};
-                    options.secure = this.getSecureCookie();
-                    options.sameSite = "Strict";
-                    cookies.set(
-                        "auth",
-                        { user: userName, token: null },
-                        options
+                    const match = (response.results || []).find(
+                        (token) => token.token === userToken
                     );
-                    resolve();
+                    const id = match ? match.id : null;
+                    if (!id) {
+                        resolve();
+                        return;
+                    }
+                    this.delete("/user-token/" + userName + "/" + id, {}).then(
+                        (response) => {
+                            const options = {};
+                            options.secure = this.getSecureCookie();
+                            options.sameSite = "Strict";
+                            cookies.set(
+                                "auth",
+                                { user: userName, token: null },
+                                options
+                            );
+                            resolve();
+                        },
+                        (error) => {
+                            reject(error);
+                        }
+                    );
                 },
                 (error) => {
                     reject(error);

@@ -318,6 +318,8 @@ diesel::table! {
         note -> Varchar,
         enabled -> Bool,
         expiration_time -> Nullable<Timestamptz>,
+        token_hash -> Text,
+        token_secret -> Bytea,
         creation_time -> Timestamptz,
         last_edit_time -> Timestamptz,
         last_usage_time -> Timestamptz,

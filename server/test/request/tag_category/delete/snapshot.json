@@ -1,5 +1,5 @@
 {
     "name": "NewCategory",
-    "color": "green",
+    "color": "#00ff00",
     "default": false
 }

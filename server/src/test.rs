@@ -18,7 +18,7 @@ use crate::model::post::{
 };
 use crate::model::tag::{NewTag, NewTagName, TagImplication, TagSuggestion};
 use crate::model::tag_category::NewTagCategory;
-use crate::model::user::{NewUser, NewUserToken};
+use crate::model::user::NewUser;
 use crate::schema::{
     comment, comment_score, pool, pool_category, pool_category_statistics, pool_name, pool_post, pool_statistics, post,
     post_favorite, post_feature, post_note, post_relation, post_score, post_signature, post_statistics, post_tag,
@@ -218,29 +218,36 @@ const USERS: &[NewUser] = &[
     new_user("administrator", None, UserRank::Administrator),
 ];
 
-const USER_TOKENS: &[NewUserToken] = &[
-    NewUserToken {
-        id: TEST_TOKEN,
-        user_id: 5,
-        note: Some("This is a test token"),
-        enabled: true,
-        expiration_time: None,
-    },
-    NewUserToken {
-        id: EXPIRED_TOKEN,
-        user_id: 2,
-        note: Some("This is an expired token"),
-        enabled: true,
-        expiration_time: Some(DateTime::test_date()),
-    },
-    NewUserToken {
-        id: DISABLED_TOKEN,
-        user_id: 2,
-        note: Some("This is a disabled token"),
-        enabled: false,
-        expiration_time: None,
-    },
-];
+/// Seeds user tokens with both a BLAKE3 hash and an AES-256-GCM ciphertext of
+/// each token value, matching the test config's encryption key.
+fn create_user_tokens(conn: &mut PgConnection, config: &Config) -> QueryResult<()> {
+    let token_key = config.token_encryption_key();
+    let tokens: [(Uuid, i64, Option<&str>, bool, Option<DateTime>); 3] = [
+        (TEST_TOKEN, 5, Some("This is a test token"), true, None),
+        (
+            EXPIRED_TOKEN,
+            2,
+            Some("This is an expired token"),
+            true,
+            Some(DateTime::test_date()),
+        ),
+        (DISABLED_TOKEN, 2, Some("This is a disabled token"), false, None),
+    ];
+    for (token, user_id, note, enabled, expiration_time) in tokens {
+        diesel::insert_into(user_token::table)
+            .values((
+                user_token::id.eq(token),
+                user_token::user_id.eq(user_id),
+                user_token::note.eq(note.unwrap_or("")),
+                user_token::enabled.eq(enabled),
+                user_token::expiration_time.eq(expiration_time),
+                user_token::token_hash.eq(header::hash_token_hex(token.as_bytes())),
+                user_token::token_secret.eq(crate::auth::token_crypto::encrypt_blob(&token_key, &token.to_string())),
+            ))
+            .execute(conn)?;
+    }
+    Ok(())
+}
 
 const POOL_CATEGORY_NAMES: &[&str] = &["Setting", "Style"];
 const DEFAULT_POOLS: &[&[&str]] = &[&["favs"]];
@@ -663,7 +670,7 @@ fn populate_database(conn: &mut PgConnection, config: &Config) -> AdminResult<()
     USERS.insert_into(user::table).execute(conn)?;
 
     // Create user tokens
-    USER_TOKENS.insert_into(user_token::table).execute(conn)?;
+    create_user_tokens(conn, config)?;
 
     // Create tags and pools
     create_tag_categories(conn)?;

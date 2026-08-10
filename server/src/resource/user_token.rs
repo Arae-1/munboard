@@ -8,6 +8,7 @@ use serde_with::skip_serializing_none;
 use server_macros::non_nullable_options;
 use strum::EnumString;
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 #[derive(Clone, Copy, EnumString)]
 #[strum(serialize_all = "camelCase")]
@@ -21,6 +22,7 @@ pub enum Field {
     LastEditTime,
     LastUsageTime,
     Token,
+    Id,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -43,6 +45,8 @@ impl From<Field> for u64 {
 pub struct UserTokenInfo {
     /// Resource version. See [versioning](#Versioning).
     version: Option<DateTime>,
+    /// Internal identifier of the token. Not a secret; addresses update/delete requests.
+    id: Option<Uuid>,
     /// The user that owns the token.
     user: Option<MicroUser>,
     /// A note that describes the token.
@@ -58,14 +62,22 @@ pub struct UserTokenInfo {
     last_edit_time: Option<DateTime>,
     /// The last time this token was used during a login involving `?bump-login`.
     last_usage_time: Option<DateTime>,
-    /// The token value (UUID) used for authentication. Only visible on creation.
+    /// The token value (UUID) used for authentication. Only visible to the
+    /// owner; absent on decrypt failures.
     token: Option<Option<String>>,
 }
 
 impl UserTokenInfo {
-    pub fn new(user: MicroUser, user_token: UserToken, fields: Mask<Field>, visibility: Visibility) -> Self {
+    pub fn new(
+        user: MicroUser,
+        user_token: UserToken,
+        fields: Mask<Field>,
+        visibility: Visibility,
+        token: Option<String>,
+    ) -> Self {
         UserTokenInfo {
             version: fields[Field::Version].then_some(user_token.last_edit_time),
+            id: fields[Field::Id].then_some(user_token.id),
             user: fields[Field::User].then_some(user),
             note: fields[Field::Note].then_some(user_token.note),
             enabled: fields[Field::Enabled].then_some(user_token.enabled),
@@ -74,7 +86,7 @@ impl UserTokenInfo {
             last_edit_time: fields[Field::LastEditTime].then_some(user_token.last_edit_time),
             last_usage_time: fields[Field::LastUsageTime].then_some(user_token.last_usage_time),
             token: match (fields[Field::Token], visibility == Visibility::Full) {
-                (true, true) => Some(Some(user_token.id.to_string())),
+                (true, true) => Some(token),
                 _ => None,
             },
         }

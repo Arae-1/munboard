@@ -2,6 +2,7 @@ use crate::api::error::{ApiError, ApiResult, ByteSize};
 use crate::config::Config;
 use crate::content::{self, flash};
 use crate::model::enums::{MimeType, PostType};
+use ffmpeg_sidecar::child::FfmpegChild;
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::{FfmpegEvent, LogLevel};
 use image::codecs::{gif::GifDecoder, webp::WebPDecoder};
@@ -10,6 +11,8 @@ use std::fs::File;
 use std::io::{BufReader, Read, Seek};
 use std::path::Path;
 use std::process::Command;
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::time::{Duration, Instant};
 use swf::Tag;
 use tracing::error;
 
@@ -137,6 +140,11 @@ pub fn detect_post_type(file_path: &Path, mime_type: MimeType) -> ApiResult<Post
 
 const FFMPEG_PATH: &str = "/opt/app/ffmpeg";
 
+/// Wall-clock time limit for a single ffmpeg subprocess (probe or decode).
+const FFMPEG_TIMEOUT: Duration = Duration::from_secs(30);
+/// Wall-clock time limit for pdftoppm rendering.
+const PDFTOPP_TIMEOUT: Duration = Duration::from_secs(15);
+
 /// Decodes a raw array of bytes into pixel data.
 fn image(file_path: &Path, format: ImageFormat) -> ApiResult<DynamicImage> {
     let file = content::map_read_result(File::open(file_path))?;
@@ -147,8 +155,81 @@ fn image(file_path: &Path, format: ImageFormat) -> ApiResult<DynamicImage> {
     reader.decode().map_err(ApiError::from)
 }
 
+/// Spawns ffmpeg with `args` and streams its parsed events through a channel.
+/// Returns the child handle alongside the receiver so the caller can enforce a
+/// deadline and kill the process on timeout.
+fn spawn_ffmpeg_events(path: &Path, args: &[&str]) -> ApiResult<(FfmpegChild, mpsc::Receiver<FfmpegEvent>)> {
+    let path_str = path.to_string_lossy();
+    let mut child = FfmpegCommand::new_with_path(FFMPEG_PATH)
+        .input(&path_str)
+        .args(args)
+        .spawn()?;
+    let iter = child.iter().map_err(|err| ApiError::FfmpegError(err.into_boxed_dyn_error()))?;
+    let (tx, rx) = mpsc::channel();
+    // Forward events from the parser threads so the wait can be bounded with
+    // `recv_timeout` instead of blocking indefinitely.
+    std::thread::spawn(move || {
+        for event in iter {
+            if tx.send(event).is_err() {
+                break;
+            }
+        }
+    });
+    Ok((child, rx))
+}
+
+/// Returns the next ffmpeg event before `deadline`, killing ffmpeg if it is
+/// exceeded. Returns `Ok(None)` once the process has ended.
+fn recv_ffmpeg_event(
+    child: &mut FfmpegChild,
+    rx: &mpsc::Receiver<FfmpegEvent>,
+    deadline: Instant,
+) -> ApiResult<Option<FfmpegEvent>> {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    match rx.recv_timeout(remaining) {
+        Ok(event) => Ok(Some(event)),
+        Err(RecvTimeoutError::Timeout) => {
+            let _ = child.as_inner_mut().kill();
+            let _ = child.wait();
+            Err(ApiError::FfmpegError("FFmpeg exceeded its time limit".into()))
+        }
+        Err(RecvTimeoutError::Disconnected) => Ok(None),
+    }
+}
+
+/// Returns the coded dimensions of the first video stream without decoding any
+/// frames. Mirrors the stream probe used by [`video_has_audio`].
+fn probe_video_dimensions(path: &Path) -> ApiResult<Option<(u32, u32)>> {
+    let (mut child, rx) = spawn_ffmpeg_events(path, &["-c", "copy", "-t", "0", "-f", "null", "-"])?;
+    let deadline = Instant::now() + FFMPEG_TIMEOUT;
+    loop {
+        match recv_ffmpeg_event(&mut child, &rx, deadline)? {
+            Some(FfmpegEvent::ParsedInputStream(stream)) => {
+                if let Some(video) = stream.video_data() {
+                    let _ = child.as_inner_mut().kill();
+                    let _ = child.wait();
+                    return Ok(Some((video.width, video.height)));
+                }
+            }
+            Some(FfmpegEvent::Log(LogLevel::Error | LogLevel::Fatal, err) | FfmpegEvent::Error(err)) => {
+                return Err(ApiError::FfmpegError(err.into()));
+            }
+            Some(_) => {}
+            None => return Ok(None),
+        }
+    }
+}
+
 /// Decodes a representative frame of the image or video at the given `path`.
 fn ffmpeg_frame(path: &Path, post_type: PostType) -> ApiResult<Option<DynamicImage>> {
+    // Reject media whose coded dimensions exceed the limit before the decode
+    // pass allocates full-resolution frame buffers inside ffmpeg.
+    if let Some((width, height)) = probe_video_dimensions(path)? {
+        if width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION {
+            return Err(ApiError::FfmpegError("Media dimensions exceed the maximum supported size".into()));
+        }
+    }
+
     let is_video_format = matches!(post_type, PostType::Video | PostType::Flash);
     // Scale frames down to the decode dimension limit before their raw bytes
     // are transferred into this process, so an oversized video cannot force a
@@ -160,17 +241,15 @@ fn ffmpeg_frame(path: &Path, post_type: PostType) -> ApiResult<Option<DynamicIma
         format!("format=rgba,{scale}")
     };
 
-    let path_str = path.to_string_lossy();
-    let iter = FfmpegCommand::new_with_path(FFMPEG_PATH)
-        .input(&path_str)
-        .args(["-t", "30", "-vf", filter.as_str(), "-frames:v", "1", "-f", "rawvideo", "-"])
-        .spawn()?
-        .iter()
-        .map_err(|err| ApiError::FfmpegError(err.into_boxed_dyn_error()))?;
-
-    for event in iter {
-        match event {
-            FfmpegEvent::OutputFrame(f) => {
+    // `-threads 1` bounds decode CPU usage; the deadline below bounds wall time.
+    let (mut child, rx) = spawn_ffmpeg_events(
+        path,
+        &["-threads", "1", "-t", "30", "-vf", filter.as_str(), "-frames:v", "1", "-f", "rawvideo", "-"],
+    )?;
+    let deadline = Instant::now() + FFMPEG_TIMEOUT;
+    loop {
+        match recv_ffmpeg_event(&mut child, &rx, deadline)? {
+            Some(FfmpegEvent::OutputFrame(f)) => {
                 if f.width > MAX_IMAGE_DIMENSION || f.height > MAX_IMAGE_DIMENSION {
                     return Err(ApiError::FfmpegError("Decoded frame exceeds maximum dimensions".into()));
                 }
@@ -181,12 +260,17 @@ fn ffmpeg_frame(path: &Path, post_type: PostType) -> ApiResult<Option<DynamicIma
                     RgbaImage::from_raw(f.width, f.height, f.data).map(DynamicImage::ImageRgba8)
                 }
                 .ok_or(ApiError::FrameBufferMismatch(f.width, f.height, buffer_len))?;
+                // The frame is fully received; stop ffmpeg instead of letting
+                // it run to completion in the background.
+                let _ = child.as_inner_mut().kill();
+                let _ = child.wait();
                 return Ok(Some(extracted_frame));
             }
-            FfmpegEvent::Log(LogLevel::Error | LogLevel::Fatal, err) | FfmpegEvent::Error(err) => {
+            Some(FfmpegEvent::Log(LogLevel::Error | LogLevel::Fatal, err) | FfmpegEvent::Error(err)) => {
                 return Err(ApiError::FfmpegError(err.into()));
             }
-            _ => {}
+            Some(_) => {}
+            None => break,
         }
     }
     Ok(None)
@@ -200,14 +284,40 @@ fn pdf_representative_image(file_path: &Path) -> ApiResult<DynamicImage> {
     let prefix = format!("{}.thumb", path_str);
     let png_path = format!("{prefix}.png");
 
-    let status = Command::new("pdftoppm")
-        .args(["-png", "-singlefile", "-f", "1", "-l", "1", "-r", "100", &path_str, &prefix])
-        .status();
+    let max_dimension = MAX_IMAGE_DIMENSION.to_string();
+    // `-W`/`-H` cap the output size so a pathological page cannot force a
+    // multi-GB render. pdftoppm has no built-in timeout, so enforce one here
+    // and kill the process if it is exceeded.
+    let child = Command::new("pdftoppm")
+        .args([
+            "-png", "-singlefile", "-f", "1", "-l", "1", "-r", "100",
+            "-W", &max_dimension, "-H", &max_dimension, &path_str, &prefix,
+        ])
+        .spawn();
 
-    let result = match status {
-        Ok(s) if s.success() => decode_pdf_render(Path::new(&png_path))
-            .or_else(|_| Ok(DynamicImage::ImageRgb8(RgbImage::new(1, 1)))),
-        _ => Ok(DynamicImage::ImageRgb8(RgbImage::new(1, 1))),
+    let result = match child {
+        Ok(mut child) => {
+            let deadline = Instant::now() + PDFTOPP_TIMEOUT;
+            let status = loop {
+                match child.try_wait() {
+                    Ok(Some(status)) => break Ok(status),
+                    Ok(None) => {}
+                    Err(_) => break Err(()),
+                }
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break Err(());
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            };
+            match status {
+                Ok(s) if s.success() => decode_pdf_render(Path::new(&png_path))
+                    .or_else(|_| Ok(DynamicImage::ImageRgb8(RgbImage::new(1, 1)))),
+                _ => Ok(DynamicImage::ImageRgb8(RgbImage::new(1, 1))),
+            }
+        }
+        Err(_) => Ok(DynamicImage::ImageRgb8(RgbImage::new(1, 1))),
     };
     let _ = std::fs::remove_file(&png_path);
     result

@@ -292,6 +292,9 @@ async fn get_neighbors(
         .transaction(move |conn| {
             const INITIAL_LIMIT: i64 = 1000;
             const LIMIT_GROWTH: i64 = 10;
+            // Stop growing the search window beyond this many rows so a single
+            // request cannot scan the whole result set.
+            const MAX_NEIGHBOR_LIMIT: i64 = 20000;
 
             verify_visibility(conn, &ctx, post_id)?;
 
@@ -329,7 +332,7 @@ async fn get_neighbors(
 
                 let post_position = post_id_batch.iter().position(|&id| id == post_id);
                 if post_id_batch.len() < usize::try_from(limit).unwrap_or(usize::MAX)
-                    || limit == i64::MAX
+                    || limit >= MAX_NEIGHBOR_LIMIT
                     || post_id_batch.len() == usize::MAX
                     || (post_position.is_some() && post_position != Some(post_id_batch.len().saturating_sub(1)))
                 {
@@ -345,7 +348,7 @@ async fn get_neighbors(
                 }
 
                 offset += limit - 2;
-                limit = limit.saturating_mul(LIMIT_GROWTH);
+                limit = limit.saturating_mul(LIMIT_GROWTH).min(MAX_NEIGHBOR_LIMIT);
             };
 
             let post_ids: Vec<_> = prev_post_id.into_iter().chain(next_post_id).collect();
@@ -781,6 +784,8 @@ async fn create(
     match body {
         JsonOrMultipart::Json(payload) => create_impl(ctx, params, payload).await,
         JsonOrMultipart::Multipart(payload) => {
+            // Verify before extract so anonymous clients cannot write temp files.
+            ctx.verify_privilege(Action::PostCreateIdentified)?;
             let decoded_body = upload::extract(&ctx.config, payload, [PartName::Content, PartName::Thumbnail]).await?;
             let metadata = decoded_body.metadata.ok_or(ApiError::MissingMetadata)?;
             let mut new_post: PostCreateBody = serde_json::from_slice(&metadata)?;
@@ -1377,10 +1382,18 @@ mod test {
     use crate::search::post::Token;
     use crate::test::*;
     use crate::time::DateTime;
+    use axum::ServiceExt;
+    use axum::body::Bytes;
+    use axum::extract::Request;
+    use axum::http::StatusCode;
+    use axum_test::TestServer;
     use diesel::dsl::exists;
     use diesel::{ExpressionMethods, PgConnection, QueryDsl, QueryResult, RunQueryDsl, SelectableHelper};
+    use serde_json::Value;
     use serial_test::{parallel, serial};
     use strum::IntoEnumIterator;
+    use tower::layer::Layer;
+    use tower_http::normalize_path::NormalizePathLayer;
 
     // Exclude fields that involve creation_time or last_edit_time
     const FIELDS: &str = "&fields=id,user,fileSize,canvasWidth,canvasHeight,safety,type,mimeType,checksum,checksumMd5,\
@@ -1511,6 +1524,46 @@ mod test {
 
         reset_database();
         Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    #[serial]
+    async fn create_multipart_requires_privilege() -> ApiResult<()> {
+        // The multipart arm must verify privileges before extracting the
+        // upload, so anonymous clients cannot write temporary files. The file
+        // part is deliberately unparseable, which would yield a 400 if extract
+        // ran before the privilege check.
+        let state = get_state();
+        let (router, _) = crate::api::routes(state).split_for_parts();
+        let app = NormalizePathLayer::trim_trailing_slash().layer(router);
+        let server = TestServer::new(ServiceExt::<Request>::into_make_service(app))
+            .expect("Test server must be constructible");
+
+        let boundary = "test_boundary";
+        let metadata = r#"{"safety":"safe","contentToken":"anonymous_multipart.png"}"#;
+        let body = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"metadata\"\r\nContent-Type: application/json\r\n\r\n{metadata}\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"content\"; filename=\"file\"\r\n\r\nx\r\n--{boundary}--\r\n"
+        );
+        let response = server
+            .post("/posts/")
+            .content_type(&format!("multipart/form-data; boundary={boundary}"))
+            .bytes(Bytes::from(body))
+            .await;
+
+        assert_eq!(response.status_code(), StatusCode::FORBIDDEN);
+        let response_body: Value = serde_json::from_slice(response.as_bytes())?;
+        assert_eq!(response_body["name"], "InsufficientPrivileges");
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[parallel]
+    async fn list_invalid_pagination() -> ApiResult<()> {
+        // Negative and zero limits/offsets must fail with a clean 400 instead
+        // of an internal database error.
+        verify_response("GET /posts/?limit=-1", "post/list_negative_limit").await?;
+        verify_response("GET /posts/?limit=0", "post/list_zero_limit").await?;
+        verify_response("GET /posts/?offset=-1&limit=40", "post/list_negative_offset").await
     }
 
     #[tokio::test]

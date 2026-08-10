@@ -55,8 +55,11 @@ impl User {
     }
 }
 
+/// New token rows default `token_hash` and `token_secret` to empty DB values;
+/// callers that store a real token must set them explicitly.
 #[derive(Insertable)]
 #[diesel(table_name = user_token)]
+#[diesel(treat_none_as_default_value = true)]
 #[diesel(check_for_backend(Pg))]
 pub struct NewUserToken<'a> {
     pub id: Uuid,
@@ -72,11 +75,18 @@ pub struct NewUserToken<'a> {
 #[diesel(table_name = user_token)]
 #[diesel(check_for_backend(Pg))]
 pub struct UserToken {
+    /// Internal identifier of the token. Never a secret; used to address
+    /// update/delete requests.
     pub id: Uuid,
     pub user_id: i64,
     pub note: LargeString,
     pub enabled: bool,
     pub expiration_time: Option<DateTime>,
+    /// BLAKE3 hash (hex) of the token. Lookup index for authentication.
+    pub token_hash: String,
+    /// AES-256-GCM ciphertext (12-byte nonce followed by the ciphertext) of
+    /// the token. The plaintext token is never stored.
+    pub token_secret: Vec<u8>,
     pub creation_time: DateTime,
     pub last_edit_time: DateTime,
     pub last_usage_time: DateTime,

@@ -20,13 +20,18 @@ class UserTokenView extends events.EventTarget {
 
         this._decorateTokenForms();
         this._decorateTokenNoteChangeLinks();
+        this._decorateTokenToggleLinks();
+    }
+
+    _tokenById(id) {
+        return this._tokens.find((token) => token.id === id);
     }
 
     _decorateTokenForms() {
         this._tokenFormNodes = [];
-        for (let i = 0; i < this._tokens.length; i++) {
+        for (let token of this._tokens) {
             let formNode = this._hostNode.querySelector(
-                '.token[data-token-id="' + i + '"]'
+                '.token[data-token-id="' + token.id + '"]'
             );
             formNode.addEventListener("submit", (e) => this._evtDelete(e));
             this._tokenFormNodes.push(formNode);
@@ -34,12 +39,23 @@ class UserTokenView extends events.EventTarget {
     }
 
     _decorateTokenNoteChangeLinks() {
-        for (let i = 0; i < this._tokens.length; i++) {
+        for (let token of this._tokens) {
             let linkNode = this._hostNode.querySelector(
-                '.token-change-note[data-token-id="' + i + '"]'
+                '.token-change-note[data-token-id="' + token.id + '"]'
             );
             linkNode.addEventListener("click", (e) =>
                 this._evtChangeNoteClick(e)
+            );
+        }
+    }
+
+    _decorateTokenToggleLinks() {
+        for (let token of this._tokens) {
+            let linkNode = this._hostNode.querySelector(
+                '.token-toggle[data-token-id="' + token.id + '"]'
+            );
+            linkNode.addEventListener("click", (e) =>
+                this._evtToggleClick(e)
             );
         }
     }
@@ -72,8 +88,9 @@ class UserTokenView extends events.EventTarget {
 
     _evtDelete(e) {
         e.preventDefault();
-        const userToken =
-            this._tokens[parseInt(e.target.getAttribute("data-token-id"))];
+        const userToken = this._tokenById(
+            e.target.getAttribute("data-token-id")
+        );
         this.dispatchEvent(
             new CustomEvent("delete", {
                 detail: {
@@ -109,10 +126,11 @@ class UserTokenView extends events.EventTarget {
 
     _evtChangeNoteClick(e) {
         e.preventDefault();
-        const userToken =
-            this._tokens[parseInt(e.target.getAttribute("data-token-id"))];
+        const userToken = this._tokenById(
+            e.target.getAttribute("data-token-id")
+        );
         const text = window.prompt(
-            "Please enter the new name:",
+            "Please enter the new note:",
             userToken.note !== null ? userToken.note : undefined
         );
         if (!text) {
@@ -124,6 +142,22 @@ class UserTokenView extends events.EventTarget {
                     user: this._user,
                     userToken: userToken,
                     note: text ? text : undefined,
+                },
+            })
+        );
+    }
+
+    _evtToggleClick(e) {
+        e.preventDefault();
+        const userToken = this._tokenById(
+            e.target.getAttribute("data-token-id")
+        );
+        this.dispatchEvent(
+            new CustomEvent("update", {
+                detail: {
+                    user: this._user,
+                    userToken: userToken,
+                    enabled: !userToken.enabled,
                 },
             })
         );

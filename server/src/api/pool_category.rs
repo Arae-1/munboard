@@ -11,11 +11,16 @@ use crate::schema::{pool, pool_category};
 use crate::string::SmallString;
 use crate::time::DateTime;
 use crate::{api, snapshot};
-use diesel::{ExpressionMethods, Insertable, OptionalExtension, QueryDsl, RunQueryDsl, SaveChangesDsl};
+use diesel::{ExpressionMethods, Insertable, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl, SaveChangesDsl};
+use regex::Regex;
 use serde::Deserialize;
+use std::sync::LazyLock;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
+
+static COLOR_HEX_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^#[0-9a-fA-F]{6}$").unwrap());
 
 pub fn routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
@@ -120,6 +125,12 @@ async fn create(
 ) -> ApiResult<Json<PoolCategoryInfo>> {
     ctx.verify_privilege(Action::PoolCategoryCreate)?;
     api::verify_matches_regex(&ctx.config, &body.name, RegexType::PoolCategory)?;
+    if !body.color.is_empty() && !COLOR_HEX_REGEX.is_match(&body.color) {
+        return Err(ApiError::ExpressionFailsRegex(
+            SmallString::new(&*body.color),
+            RegexType::PoolCategory,
+        ));
+    }
 
     let category = connection_pool
         .transaction(move |conn| {
@@ -199,9 +210,15 @@ async fn update(
                 api::verify_matches_regex(&ctx.config, &name, RegexType::PoolCategory)?;
                 new_category.name = name;
             }
-            if let Some(color) = body.color {
+            if let Some(color) = &body.color {
                 ctx.verify_privilege(Action::PoolCategoryEditColor)?;
-                new_category.color = color;
+                if !color.is_empty() && !COLOR_HEX_REGEX.is_match(color) {
+                    return Err(ApiError::ExpressionFailsRegex(
+                        SmallString::new(&**color),
+                        RegexType::PoolCategory,
+                    ));
+                }
+                new_category.color = color.clone();
             }
 
             new_category.last_edit_time = DateTime::now();
@@ -467,8 +484,10 @@ mod test {
 
         verify_response("POST /pool-categories", "pool_category/create_invalid").await?;
         verify_response("POST /pool-categories", "pool_category/create_name_clash").await?;
+        verify_response("POST /pool-categories", "pool_category/create_invalid_color").await?;
         verify_response("PUT /pool-category/default", "pool_category/edit_invalid").await?;
         verify_response("PUT /pool-category/default", "pool_category/edit_name_clash").await?;
+        verify_response("PUT /pool-category/default", "pool_category/edit_invalid_color").await?;
         verify_response("DELETE /pool-category/default", "pool_category/delete_default").await?;
 
         reset_sequence(ResourceType::PoolCategory)?;

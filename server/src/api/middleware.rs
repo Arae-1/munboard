@@ -3,14 +3,16 @@ use crate::app::AppState;
 use crate::auth::{Client as AuthClient, header};
 use crate::model::enums::UserRank;
 use crate::model::snapshot::Snapshot;
-use crate::schema::{snapshot, user};
+use crate::schema::{snapshot, user, user_token};
 use crate::string::SmallString;
+use crate::time::DateTime;
 use crate::update;
 use axum::extract::{Request, State};
 use axum::http::Method;
-use axum::http::header::AUTHORIZATION;
+use axum::http::header::{AUTHORIZATION, RETRY_AFTER};
 use axum::middleware::Next;
-use axum::response::Response;
+use axum::response::{IntoResponse, Json, Response};
+use axum::http::StatusCode;
 use diesel::{
     ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, QueryResult, RunQueryDsl, SelectableHelper,
 };
@@ -41,24 +43,63 @@ pub async fn log_error(req: Request, next: Next) -> Response {
 /// Attempts to authorizes user by either username/password or user token.
 pub async fn auth(State(state): State<AppState>, mut request: Request, next: Next) -> ApiResult<Response> {
     let auth_header = request.headers().get(AUTHORIZATION);
-    let client = if let Some(auth_value) = auth_header {
+    let authenticated = if let Some(auth_value) = auth_header {
         let auth_str = auth_value.to_str()?;
-        header::authenticate_user(&state, auth_str).await
+        match header::authenticate_user(&state, auth_str).await {
+            Ok(authenticated) => Some(authenticated),
+            Err(header::AuthenticateError::RateLimited { retry_after_secs }) => {
+                return Ok(rate_limited_response(retry_after_secs));
+            }
+            Err(header::AuthenticateError::Auth(err)) => return Err(err.into()),
+        }
     } else {
-        Ok(AuthClient::new(None, UserRank::Anonymous))
-    }?;
+        None
+    };
+    let client = authenticated
+        .as_ref()
+        .map(|authenticated| authenticated.client)
+        .unwrap_or_else(|| AuthClient::new(None, UserRank::Anonymous));
 
-    // If client is not anonymous and query contains "bump-login", update login time
+    // If client is not anonymous and the query contains the exact "bump-login"
+    // parameter, update the login time (and the token usage time for token auth).
     if let Some(user_id) = client.id
-        && let Some(query) = request.uri().query()
-        && query.contains("bump-login")
+        && has_bump_login_param(request.uri().query())
     {
         let mut conn = state.connection_pool.get().await?;
         update::user::last_login_time(conn.as_mut(), user_id)?;
+        if let Some(token_hash) = authenticated.as_ref().and_then(|authenticated| authenticated.token_hash.as_deref()) {
+            diesel::update(user_token::table)
+                .filter(user_token::token_hash.eq(token_hash))
+                .set(user_token::last_usage_time.eq(DateTime::now()))
+                .execute(conn.as_mut())?;
+        }
     }
 
     request.extensions_mut().insert(client);
     Ok(next.run(request).await)
+}
+
+/// Returns true when the query string contains the exact `bump-login` parameter.
+fn has_bump_login_param(query: Option<&str>) -> bool {
+    query.is_some_and(|query| url::form_urlencoded::parse(query.as_bytes()).any(|(key, _)| key == "bump-login"))
+}
+
+/// Answers 429 with a `Retry-After` header for a rate-limited username.
+fn rate_limited_response(retry_after_secs: u64) -> Response {
+    let response = (
+        StatusCode::TOO_MANY_REQUESTS,
+        Json(serde_json::json!({
+            "name": "RateLimited",
+            "title": "Failed Authentication",
+            "description": "Too many failed login attempts. Try again later.",
+        })),
+    )
+        .into_response();
+    let mut response = response;
+    response
+        .headers_mut()
+        .insert(RETRY_AFTER, HeaderValue::from_str(&retry_after_secs.to_string()).expect("Retry-After must be a valid header"));
+    response
 }
 
 /// Sends snapshot data to webhook URLs after modifying requests.
@@ -197,10 +238,21 @@ async fn post_to_webhook(url: Url, snapshot: Arc<Snapshot>, user_ip: Option<Stri
 
 #[cfg(test)]
 mod test {
+    use crate::api;
     use crate::api::error::ApiResult;
-    use crate::auth::header;
+    use crate::auth::{header, token_crypto};
+    use crate::schema::user_token;
     use crate::test::*;
-    use serial_test::parallel;
+    use crate::time::DateTime;
+    use axum::ServiceExt;
+    use axum::extract::Request;
+    use axum::http::header::AUTHORIZATION;
+    use axum_test::TestServer;
+    use diesel::{ExpressionMethods, PgConnection, QueryDsl, QueryResult, RunQueryDsl};
+    use serde_json::json;
+    use serial_test::{parallel, serial};
+    use tower::layer::Layer;
+    use tower_http::normalize_path::NormalizePathLayer;
     use uuid::{Uuid, uuid};
 
     #[tokio::test]
@@ -226,10 +278,39 @@ mod test {
         let wrong_token = Some(header::token_credentials_for("regular_user", FAKE_TOKEN));
         verify_response_with_credentials(wrong_token, QUERY, "middleware/wrong_token").await?;
 
-        let expired_token = Some(header::token_credentials_for("regular_user", EXPIRED_TOKEN));
+        // Insert expired and disabled tokens with their hashes so the lookup
+        // succeeds and the expiry/disabled checks are exercised.
+        let mut conn = get_connection()?;
+        let token_key = get_state().config.token_encryption_key();
+        let expired_token = Uuid::new_v4();
+        diesel::insert_into(user_token::table)
+            .values((
+                user_token::id.eq(expired_token),
+                user_token::user_id.eq(2),
+                user_token::note.eq("expired token"),
+                user_token::enabled.eq(true),
+                user_token::expiration_time.eq(Some(DateTime::test_date())),
+                user_token::token_hash.eq(header::hash_token_hex(expired_token.as_bytes())),
+                user_token::token_secret.eq(token_crypto::encrypt_blob(&token_key, &expired_token.to_string())),
+            ))
+            .execute(&mut conn)?;
+        let disabled_token = Uuid::new_v4();
+        diesel::insert_into(user_token::table)
+            .values((
+                user_token::id.eq(disabled_token),
+                user_token::user_id.eq(2),
+                user_token::note.eq("disabled token"),
+                user_token::enabled.eq(false),
+                user_token::expiration_time.eq(None::<DateTime>),
+                user_token::token_hash.eq(header::hash_token_hex(disabled_token.as_bytes())),
+                user_token::token_secret.eq(token_crypto::encrypt_blob(&token_key, &disabled_token.to_string())),
+            ))
+            .execute(&mut conn)?;
+
+        let expired_token = Some(header::token_credentials_for("regular_user", expired_token));
         verify_response_with_credentials(expired_token, QUERY, "middleware/expired_token").await?;
 
-        let disabled_token = Some(header::token_credentials_for("regular_user", DISABLED_TOKEN));
+        let disabled_token = Some(header::token_credentials_for("regular_user", disabled_token));
         verify_response_with_credentials(disabled_token, QUERY, "middleware/disabled_token").await?;
 
         let missing_credentials = Some(String::new());
@@ -237,6 +318,74 @@ mod test {
 
         let unencoded_credentials = Some(format!("Basic regular_user:{TEST_PASSWORD}"));
         verify_response_with_credentials(unencoded_credentials, QUERY, "middleware/unencoded_credentials").await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn token_auth_bumps_last_usage_time() -> ApiResult<()> {
+        let app_state = get_state();
+        let (router, _) = api::routes(app_state).split_for_parts();
+        let app = NormalizePathLayer::trim_trailing_slash().layer(router);
+        let server = TestServer::new(ServiceExt::<Request>::into_make_service(app))
+            .expect("Test server must be constructible");
+        let auth = header::basic_credentials_for("regular_user", TEST_PASSWORD);
+
+        // Mint a token through the API: the create response carries the token
+        // and its internal id.
+        let response = server
+            .post("/user-token/regular_user/?fields=token,id")
+            .add_header(AUTHORIZATION, &auth)
+            .json(&json!({"note": "bump test"}))
+            .await;
+        assert_eq!(response.status_code(), 200);
+        let body: serde_json::Value = serde_json::from_slice(response.as_bytes())?;
+        let token: Uuid = serde_json::from_value(body["token"].clone()).expect("create response must include the token");
+        let id: Uuid = serde_json::from_value(body["id"].clone()).expect("create response must include the token id");
+
+        let get_usage_time = |conn: &mut PgConnection| -> QueryResult<DateTime> {
+            user_token::table
+                .select(user_token::last_usage_time)
+                .find(id)
+                .first(conn)
+        };
+        let mut conn = get_connection()?;
+        let initial_usage = get_usage_time(&mut conn)?;
+
+        // Login without bump-login: the token usage time is not touched.
+        let token_auth = header::token_credentials_for("regular_user", token);
+        let response = server.get("/comment/1").add_header(AUTHORIZATION, &token_auth).await;
+        assert_eq!(response.status_code(), 200);
+        assert_eq!(get_usage_time(&mut conn)?, initial_usage);
+
+        // Login with bump-login: the token usage time is updated.
+        let response = server
+            .get("/comment/1?bump-login=true")
+            .add_header(AUTHORIZATION, &token_auth)
+            .await;
+        assert_eq!(response.status_code(), 200);
+        assert!(get_usage_time(&mut conn)? > initial_usage);
+
+        // A value merely containing "bump-login" must not trigger the update.
+        let response = server
+            .get("/comment/1?note=bump-login")
+            .add_header(AUTHORIZATION, &token_auth)
+            .await;
+        assert_eq!(response.status_code(), 200);
+        let usage = get_usage_time(&mut conn)?;
+        let response = server
+            .get("/comment/1?bump-login=true")
+            .add_header(AUTHORIZATION, &token_auth)
+            .await;
+        assert_eq!(response.status_code(), 200);
+        assert!(get_usage_time(&mut conn)? > usage);
+
+        // Cleanup
+        let response = server
+            .delete(&format!("/user-token/regular_user/{id}"))
+            .add_header(AUTHORIZATION, &auth)
+            .await;
+        assert_eq!(response.status_code(), 200);
         Ok(())
     }
 }

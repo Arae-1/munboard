@@ -291,6 +291,9 @@ pub struct Config {
     pub webhooks: Vec<Url>,
     pub password_secret: SmallString,
     pub content_secret: SmallString,
+    /// AES-256-GCM key (64 hex chars = 32 bytes) used to encrypt user tokens at rest.
+    #[serde(default = "default_token_encryption_secret")]
+    pub token_encryption_secret: SmallString,
     pub domain: Option<SmallString>,
     pub delete_source_files: bool,
     pub append_tag_implications_on_post_edit: bool,
@@ -304,6 +307,13 @@ pub struct Config {
     pub auto_explain: bool,
     #[serde(default)]
     pub trusted_proxy: bool,
+    /// Maximum number of failed basic-auth attempts per username within
+    /// `rate_limit_window_secs` before further attempts are rejected with 429.
+    #[serde(default = "default_rate_limit_max_failures")]
+    pub rate_limit_max_failures: usize,
+    /// Length of the failed-login sliding window, in seconds.
+    #[serde(default = "default_rate_limit_window_secs")]
+    pub rate_limit_window_secs: u64,
     pub max_upload_size: usize,
     pub max_url_download_size: usize,
     pub thumbnails: ThumbnailConfig,
@@ -358,6 +368,24 @@ impl Config {
     pub fn max_multipart_body_size(&self) -> usize {
         self.max_upload_size.saturating_mul(2).saturating_add(2 * 1024 * 1024)
     }
+
+    /// Parses `token_encryption_secret` into the 32-byte AES-256-GCM key.
+    pub fn token_encryption_key(&self) -> [u8; 32] {
+        crate::auth::token_crypto::parse_key(&self.token_encryption_secret)
+            .expect("token_encryption_secret must be a 64-character hex key; validated at startup")
+    }
+}
+
+fn default_token_encryption_secret() -> SmallString {
+    SmallString::new("change")
+}
+
+fn default_rate_limit_max_failures() -> usize {
+    20
+}
+
+fn default_rate_limit_window_secs() -> u64 {
+    60
 }
 
 /// Deserializes the `config.toml`.
@@ -368,15 +396,45 @@ pub fn create() -> Config {
     } else {
         let config_path = std::env::args().find_map(|arg| arg.strip_prefix("--config-path=").map(ToOwned::to_owned));
         let config_path = config_path.as_deref().unwrap_or("config");
-        create_config(Some(config_path))
+        let config = create_config(Some(config_path));
+        validate_secrets(&config);
+        config
     }
 }
+
+/// Refuses to start with placeholder secrets: the default "change" values from
+/// `config.toml.dist` would salt passwords and content filenames with a known
+/// constant. The check runs after the operator's config file is merged, so a
+/// real deployment that overrides the secrets is unaffected.
+fn validate_secrets(config: &Config) {
+    let password_is_placeholder = config.password_secret.is_empty() || config.password_secret.as_bytes() == b"change";
+    let content_is_placeholder = config.content_secret.is_empty() || config.content_secret.as_bytes() == b"change";
+    let token_key_is_placeholder = config.token_encryption_secret.is_empty()
+        || config.token_encryption_secret.as_bytes() == b"change"
+        || crate::auth::token_crypto::parse_key(&config.token_encryption_secret).is_err();
+    if password_is_placeholder || content_is_placeholder || token_key_is_placeholder {
+        // We use `eprintln!` instead of `error!` here because tracing hasn't been initialized yet
+        eprintln!(
+            "password_secret, content_secret and token_encryption_secret must be set to unique values in config.toml; \
+             the default 'change' (or an empty value) is not allowed, \
+             and token_encryption_secret must be 64 hexadecimal characters"
+        );
+        std::process::exit(1);
+    }
+}
+
+/// Deterministic AES-256-GCM key for the test config, so seeded tokens can be
+/// encrypted and decrypted with the same key the tests use.
+#[cfg(test)]
+pub const TEST_TOKEN_ENCRYPTION_SECRET: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 
 /// Creates a test config with an optional `override_relative_path` to override the default config.
 #[cfg(test)]
 pub fn test_config(override_relative_path: Option<&str>) -> Config {
     let override_path = override_relative_path.map(|relative_path| format!("test/request/{relative_path}/config"));
-    create_config(override_path.as_deref())
+    let mut config = create_config(override_path.as_deref());
+    config.token_encryption_secret = SmallString::new(TEST_TOKEN_ENCRYPTION_SECRET);
+    config
 }
 
 pub fn port() -> u16 {

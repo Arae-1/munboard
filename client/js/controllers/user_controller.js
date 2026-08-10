@@ -97,9 +97,6 @@ class UserController {
                         `user_token_create_${infix}`
                     ),
                     canEditToken: api.hasPrivilege(`user_token_edit_${infix}`),
-                    canDeleteToken: api.hasPrivilege(
-                        `user_token_delete_${infix}`
-                    ),
                     canDelete: api.hasPrivilege(`user_delete_${infix}`),
                     ranks: ranks,
                     tokens: userTokens,
@@ -304,6 +301,9 @@ class UserController {
 
         if (e.detail.note !== undefined && e.detail.note !== null) {
             e.detail.userToken.note = e.detail.note;
+        }
+        if (e.detail.enabled !== undefined && e.detail.enabled !== null) {
+            e.detail.userToken.enabled = e.detail.enabled;
         }
 
         e.detail.userToken.save(e.detail.user.name).then(

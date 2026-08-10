@@ -2,6 +2,8 @@
 password_secret = "change"
 # Used to generate filenames for static content (any bytes after the first 32 will be ignored)
 content_secret = "change"
+# AES-256-GCM key (64 hex chars = 32 bytes) used to encrypt user tokens at rest
+token_encryption_secret = "change"
 
 # full url to the homepage of this szurubooru site, with no trailing slash
 # Also used for absolute URLs in OpenGraph embed pages.

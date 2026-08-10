@@ -1,0 +1,6 @@
+{
+    "name": "avatar_user",
+    "password": "test_password",
+    "avatarStyle": "manual",
+    "avatarUrl": "https://example.com/avatar.png"
+}

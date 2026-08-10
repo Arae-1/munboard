@@ -8,8 +8,8 @@
         },
         "color": {
             "type": "primitive change",
-            "old-value": "yellow",
-            "new-value": "default"
+            "old-value": "#ffff00",
+            "new-value": "#000000"
         }
     }
 }

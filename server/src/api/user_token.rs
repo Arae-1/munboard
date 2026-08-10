@@ -2,11 +2,12 @@ use crate::api::doc::USER_TOKEN_TAG;
 use crate::api::error::{ApiError, ApiResult};
 use crate::api::{self, ResourceParams, UnpagedResponse};
 use crate::app::AppState;
+use crate::auth::{header, token_crypto};
 use crate::config::Action;
 use crate::extract::{Ctx, Json, Path, Query};
 use crate::model::enums::{AvatarStyle, ResourceOperation, ResourceType};
 use crate::model::snapshot::NewSnapshot;
-use crate::model::user::{NewUserToken, UserToken};
+use crate::model::user::UserToken;
 use crate::resource::user::MicroUser;
 use crate::resource::user_token::{Field, UserTokenInfo, Visibility};
 use crate::schema::{user, user_token};
@@ -14,7 +15,7 @@ use crate::snapshot;
 use crate::string::{LargeString, SmallString};
 use crate::time::DateTime;
 use diesel::{
-    BoolExpressionMethods, ExpressionMethods, Insertable, OptionalExtension, QueryDsl, RunQueryDsl, SaveChangesDsl,
+    BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl, SaveChangesDsl,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -22,6 +23,22 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 use uuid::Uuid;
+
+/// Tokens may not expire more than 10 years in the future.
+const MAX_EXPIRATION_OFFSET_DAYS: i64 = 3650;
+
+/// Rejects expiration times that are more than 10 years in the future.
+fn validate_expiration_time(expiration_time: DateTime) -> ApiResult<DateTime> {
+    let max_expiration = DateTime::from(
+        time::OffsetDateTime::now_utc() + time::Duration::days(MAX_EXPIRATION_OFFSET_DAYS),
+    );
+    if expiration_time > max_expiration {
+        return Err(ApiError::FromStr(
+            "expirationTime cannot be more than 10 years in the future".to_string().into(),
+        ));
+    }
+    Ok(expiration_time)
+}
 
 pub fn routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
@@ -53,7 +70,7 @@ async fn list(
     let list_any = ctx.config.privileges()[Action::UserTokenListAny];
     let list_self = ctx.config.privileges()[Action::UserTokenListSelf];
 
-    let (avatar_style, user_tokens, is_self) = connection_pool
+    let (avatar_style, is_self, user_tokens) = connection_pool
         .transaction({
             let username = username.clone();
             move |conn| {
@@ -71,25 +88,39 @@ async fn list(
                 user_token::table
                     .filter(user_token::user_id.eq(user_id))
                     .order(user_token::creation_time.desc())
-                    .load(conn)
-                    .map(|tokens| (avatar_style, tokens, is_self))
+                    .load::<UserToken>(conn)
+                    .map(|tokens| (avatar_style, is_self, tokens))
                     .map_err(ApiError::from)
             }
         })
         .await?;
 
-    // Only the owner may see their raw token UUIDs; other viewers (e.g. admins
-    // inspecting another user) get the public-only resource without the secret.
+    // Only the owner may see the plaintext token: decrypt it from the stored
+    // ciphertext. Decrypt failures are logged and the token omitted.
     let visibility = if is_self { Visibility::Full } else { Visibility::PublicOnly };
-
+    let token_key = ctx.config.token_encryption_key();
     let results = user_tokens
         .into_iter()
         .map(|user_token| {
+            let token = match visibility {
+                Visibility::Full => match token_crypto::decrypt_blob(&token_key, &user_token.token_secret) {
+                    Ok(token) => Some(token),
+                    Err(err) => {
+                        tracing::warn!(
+                            "Failed to decrypt user token {} owned by {username}: {err}",
+                            user_token.id
+                        );
+                        None
+                    }
+                },
+                Visibility::PublicOnly => None,
+            };
             UserTokenInfo::new(
                 MicroUser::new(&ctx.config, username.clone(), avatar_style),
                 user_token,
                 params.fields,
                 visibility,
+                token,
             )
         })
         .collect();
@@ -124,6 +155,7 @@ struct UserTokenCreateBody {
         (status = 200, body = UserTokenInfo),
         (status = 403, description = "Privileges are too low"),
         (status = 404, description = "User does not exist"),
+        (status = 422, description = "Expiration time is more than 10 years in the future"),
     ),
 )]
 async fn create(
@@ -134,6 +166,11 @@ async fn create(
 ) -> ApiResult<Json<UserTokenInfo>> {
     let create_any = ctx.config.privileges()[Action::UserTokenCreateAny];
     let create_self = ctx.config.privileges()[Action::UserTokenCreateSelf];
+    let token_key = ctx.config.token_encryption_key();
+    let id = Uuid::new_v4();
+    let token = Uuid::new_v4();
+    let token_hash = header::hash_token_hex(token.as_bytes());
+    let token_secret = token_crypto::encrypt_blob(&token_key, &token.to_string());
 
     let (user_token, avatar_style) = connection_pool
         .transaction({
@@ -162,17 +199,23 @@ async fn create(
                     .execute(conn)?;
 
                 // Tokens created without an explicit expiration time get a sane
-                // default lifetime instead of never expiring.
+                // default lifetime instead of never expiring. The internal id
+                // and the token are distinct UUIDs; the database stores only
+                // the BLAKE3 hash and an AES-256-GCM ciphertext of the token,
+                // which is returned to the client once, in the response below.
                 let default_expiration = || DateTime::from(time::OffsetDateTime::now_utc() + time::Duration::days(30));
-                let user_token = NewUserToken {
-                    id: Uuid::new_v4(),
-                    user_id,
-                    note: body.note.as_deref().map(str::trim),
-                    enabled: body.enabled.unwrap_or(true),
-                    expiration_time: Some(body.expiration_time.unwrap_or_else(default_expiration)),
-                }
-                .insert_into(user_token::table)
-                .get_result(conn)?;
+                let expiration_time = validate_expiration_time(body.expiration_time.unwrap_or_else(default_expiration))?;
+                let user_token: UserToken = diesel::insert_into(user_token::table)
+                    .values((
+                        user_token::id.eq(id),
+                        user_token::user_id.eq(user_id),
+                        user_token::note.eq(body.note.as_deref().map(str::trim).unwrap_or("")),
+                        user_token::enabled.eq(body.enabled.unwrap_or(true)),
+                        user_token::expiration_time.eq(expiration_time),
+                        user_token::token_hash.eq(token_hash.clone()),
+                        user_token::token_secret.eq(token_secret),
+                    ))
+                    .get_result(conn)?;
                 snapshot::user_token::creation_snapshot(conn, ctx.client, &user_token)?;
                 Ok::<_, ApiError>((user_token, avatar_style))
             }
@@ -183,6 +226,7 @@ async fn create(
         user_token,
         params.fields,
         Visibility::Full,
+        Some(token.to_string()),
     )))
 }
 
@@ -206,11 +250,11 @@ struct UserTokenUpdateBody {
 /// All fields except `version` are optional - update concerns only provided fields.
 #[utoipa::path(
     put,
-    path = "/user-token/{username}/{token}",
+    path = "/user-token/{username}/{id}",
     tag = USER_TOKEN_TAG,
     params(
         ("username" = String, Path, description = "Username"),
-        ("token" = Uuid, Path, description = "User token UUID"),
+        ("id" = Uuid, Path, description = "Internal user token id"),
         ResourceParams,
     ),
     request_body = UserTokenUpdateBody,
@@ -220,18 +264,20 @@ struct UserTokenUpdateBody {
         (status = 404, description = "User does not exist"),
         (status = 404, description = "User token does not exist"),
         (status = 409, description = "Version is outdated"),
+        (status = 422, description = "Expiration time is null or more than 10 years in the future"),
     ),
 )]
 async fn update(
     Ctx(ctx, connection_pool): Ctx,
-    Path((username, token)): Path<(SmallString, Uuid)>,
+    Path((username, id)): Path<(SmallString, Uuid)>,
     Query(params): Query<ResourceParams<Field>>,
     Json(body): Json<UserTokenUpdateBody>,
 ) -> ApiResult<Json<UserTokenInfo>> {
     let edit_any = ctx.config.privileges()[Action::UserTokenEditAny];
     let edit_self = ctx.config.privileges()[Action::UserTokenEditSelf];
+    let token_key = ctx.config.token_encryption_key();
 
-    let (updated_user_token, avatar_style) = connection_pool
+    let (updated_user_token, avatar_style, is_self) = connection_pool
         .transaction({
             let username = username.clone();
             move |conn| {
@@ -247,7 +293,7 @@ async fn update(
                 api::verify_privilege(ctx.client, required_rank)?;
 
                 let mut user_token: UserToken = user_token::table
-                    .find(token)
+                    .find(id)
                     .filter(user_token::user_id.eq(user_id))
                     .first(conn)
                     .optional()?
@@ -267,7 +313,11 @@ async fn update(
                     user_token.note = note;
                 }
                 if let Some(expiration_time) = body.expiration_time {
-                    user_token.expiration_time = expiration_time;
+                    // Reject an explicit null: it would permanently disable expiry.
+                    let expiration_time = expiration_time.ok_or_else(|| {
+                        ApiError::FromStr("expirationTime cannot be null".to_string().into())
+                    })?;
+                    user_token.expiration_time = Some(validate_expiration_time(expiration_time)?);
                 }
                 user_token.last_edit_time = DateTime::now();
 
@@ -284,31 +334,46 @@ async fn update(
                         user_id: ctx.client.id,
                         operation: ResourceOperation::Modified,
                         resource_type: ResourceType::UserToken,
-                        resource_id: token.to_string().into(),
+                        resource_id: id.to_string().into(),
                         data,
                     }
                     .insert(conn)?;
                 }
-                Ok::<_, ApiError>((updated_user_token, avatar_style))
+                Ok::<_, ApiError>((updated_user_token, avatar_style, is_self))
             }
         })
         .await?;
+
+    // The owner sees the plaintext token; admins editing someone else's token
+    // do not. Decrypt failures are logged and the token omitted.
+    let visibility = if is_self { Visibility::Full } else { Visibility::PublicOnly };
+    let token = match visibility {
+        Visibility::Full => match token_crypto::decrypt_blob(&token_key, &updated_user_token.token_secret) {
+            Ok(token) => Some(token),
+            Err(err) => {
+                tracing::warn!("Failed to decrypt user token {} owned by {username}: {err}", updated_user_token.id);
+                None
+            }
+        },
+        Visibility::PublicOnly => None,
+    };
     Ok(Json(UserTokenInfo::new(
         MicroUser::new(&ctx.config, username, avatar_style),
         updated_user_token,
         params.fields,
-        Visibility::PublicOnly,
+        visibility,
+        token,
     )))
 }
 
 /// Deletes existing user token.
 #[utoipa::path(
     delete,
-    path = "/user-token/{username}/{token}",
+    path = "/user-token/{username}/{id}",
     tag = USER_TOKEN_TAG,
     params(
         ("username" = String, Path, description = "Username"),
-        ("token" = Uuid, Path, description = "User token UUID"),
+        ("id" = Uuid, Path, description = "Internal user token id"),
     ),
     request_body = Object,
     responses(
@@ -318,7 +383,7 @@ async fn update(
         (status = 404, description = "Token does not exist"),
     ),
 )]
-async fn delete(Ctx(ctx, connection_pool): Ctx, Path((username, token)): Path<(String, Uuid)>) -> ApiResult<Json<()>> {
+async fn delete(Ctx(ctx, connection_pool): Ctx, Path((username, id)): Path<(String, Uuid)>) -> ApiResult<Json<()>> {
     connection_pool
         .transaction(move |conn| {
             let user_token_owner: i64 = user::table
@@ -336,13 +401,13 @@ async fn delete(Ctx(ctx, connection_pool): Ctx, Path((username, token)): Path<(S
             ctx.verify_privilege(action)?;
 
             let user_token: UserToken = user_token::table
-                .find(token)
+                .find(id)
                 .filter(user_token::user_id.eq(user_token_owner))
                 .first(conn)
                 .optional()?
                 .ok_or(ApiError::NotFound(ResourceType::UserToken))?;
 
-            diesel::delete(user_token::table.find(token))
+            diesel::delete(user_token::table.find(id))
                 .execute(conn)?;
 
             snapshot::user_token::deletion_snapshot(conn, ctx.client, &user_token)?;
@@ -355,7 +420,7 @@ async fn delete(Ctx(ctx, connection_pool): Ctx, Path((username, token)): Path<(S
 mod test {
     use crate::api;
     use crate::api::error::ApiResult;
-    use crate::auth::header;
+    use crate::auth::{header, token_crypto};
     use crate::model::enums::{ResourceOperation, ResourceType, UserRank};
     use crate::model::snapshot::Snapshot;
     use crate::model::user::UserToken;
@@ -393,23 +458,27 @@ mod test {
             .expect("Test server must be constructible");
         let auth = header::basic_credentials_for("administrator", TEST_PASSWORD);
 
-        // The owner sees their own raw token UUIDs.
+        // The owner sees the internal id and the decrypted plaintext token.
         let response = server
             .get("/user-tokens/administrator")
             .add_header(AUTHORIZATION, &auth)
             .await;
         assert_eq!(response.status_code(), 200);
         let body: serde_json::Value = serde_json::from_slice(response.as_bytes())?;
-        assert_eq!(body["results"][0]["token"], json!(TEST_TOKEN.to_string()));
+        let result = &body["results"][0];
+        assert_eq!(result["token"], json!(TEST_TOKEN.to_string()));
+        assert_eq!(result["id"], json!(TEST_TOKEN.to_string()));
 
-        // Non-owners do not see the raw token UUIDs.
+        // Non-owners see the id and metadata but never the token.
         let response = server
             .get("/user-tokens/regular_user")
             .add_header(AUTHORIZATION, &auth)
             .await;
         assert_eq!(response.status_code(), 200);
         let body: serde_json::Value = serde_json::from_slice(response.as_bytes())?;
-        assert!(body["results"][0].get("token").is_none());
+        let result = &body["results"][0];
+        assert!(result["id"].is_string());
+        assert!(result.get("token").is_none());
 
         Ok(())
     }
@@ -420,15 +489,41 @@ mod test {
         const USER: &str = "restricted_user";
         verify_response(&format!("POST /user-token/{USER}/?{FIELDS}"), "user_token/create").await?;
 
+        let app_state = get_state();
+        let token_key = app_state.config.token_encryption_key();
+        let (router, _) = api::routes(app_state).split_for_parts();
+        let app = NormalizePathLayer::trim_trailing_slash().layer(router);
+        let server = TestServer::new(ServiceExt::<Request>::into_make_service(app))
+            .expect("Test server must be constructible");
+        let auth = header::basic_credentials_for("administrator", TEST_PASSWORD);
+
+        // The create response carries both the internal id and the plaintext token.
+        let response = server
+            .post(&format!("/user-token/{USER}"))
+            .add_header(AUTHORIZATION, &auth)
+            .json(&json!({"note": "id and token"}))
+            .await;
+        assert_eq!(response.status_code(), 200);
+        let body: serde_json::Value = serde_json::from_slice(response.as_bytes())?;
+        let id: Uuid = serde_json::from_value(body["id"].clone()).expect("create response must include id");
+        let token: Uuid = serde_json::from_value(body["token"].clone()).expect("create response must include token");
+        assert_ne!(id, token, "the internal id must not equal the token value");
+
+        // The stored row holds the token's hash and a decryptable ciphertext.
         let mut conn = get_connection()?;
-        let token: Uuid = user_token::table
-            .select(user_token::id)
-            .order(user_token::creation_time.desc())
+        let (token_hash, token_secret): (String, Vec<u8>) = user_token::table
+            .select((user_token::token_hash, user_token::token_secret))
+            .find(id)
             .first(&mut conn)?;
+        assert_eq!(token_hash, header::hash_token_hex(token.as_bytes()));
+        let decrypted =
+            token_crypto::decrypt_blob(&token_key, &token_secret).expect("the stored ciphertext must decrypt with the config key");
+        assert_eq!(decrypted, token.to_string());
 
-        verify_response(&format!("DELETE /user-token/{USER}/{token}"), "user_token/delete").await?;
+        // Delete by internal id.
+        verify_response(&format!("DELETE /user-token/{USER}/{id}"), "user_token/delete").await?;
 
-        let has_token: bool = diesel::select(exists(user_token::table.find(token))).first(&mut conn)?;
+        let has_token: bool = diesel::select(exists(user_token::table.find(id))).first(&mut conn)?;
         assert!(!has_token);
         Ok(())
     }
@@ -448,25 +543,27 @@ mod test {
         let mut conn = get_connection()?;
         let user_token = get_user_token(&mut conn)?;
 
-        verify_response(&format!("PUT /user-token/{USER}/{TEST_TOKEN}/?{FIELDS}"), "user_token/edit").await?;
+        verify_response(&format!("PUT /user-token/{USER}/{}/?{FIELDS}", user_token.id), "user_token/edit").await?;
 
-        let new_user_token = get_user_token(&mut conn)?;
-        assert_eq!(new_user_token.id, user_token.id);
-        assert_eq!(new_user_token.user_id, user_token.user_id);
-        assert_ne!(new_user_token.note, user_token.note);
-        assert_ne!(new_user_token.enabled, user_token.enabled);
-        assert_ne!(new_user_token.expiration_time, user_token.expiration_time);
-        assert!(new_user_token.last_edit_time > user_token.last_edit_time);
-        assert_eq!(new_user_token.last_usage_time, user_token.last_usage_time);
+        let edited_user_token = get_user_token(&mut conn)?;
+        assert_eq!(edited_user_token.id, user_token.id);
+        assert_eq!(edited_user_token.user_id, user_token.user_id);
+        assert_ne!(edited_user_token.note, user_token.note);
+        assert_ne!(edited_user_token.enabled, user_token.enabled);
+        assert_ne!(edited_user_token.expiration_time, user_token.expiration_time);
+        assert!(edited_user_token.last_edit_time > user_token.last_edit_time);
+        assert_eq!(edited_user_token.last_usage_time, user_token.last_usage_time);
 
-        verify_response(&format!("PUT /user-token/{USER}/{TEST_TOKEN}/?{FIELDS}"), "user_token/edit_restore").await?;
+        verify_response(&format!("PUT /user-token/{USER}/{}/?{FIELDS}", user_token.id), "user_token/edit_restore").await?;
 
         let new_user_token = get_user_token(&mut conn)?;
         assert_eq!(new_user_token.id, user_token.id);
         assert_eq!(new_user_token.user_id, user_token.user_id);
         assert_eq!(new_user_token.note, user_token.note);
         assert_eq!(new_user_token.enabled, user_token.enabled);
-        assert_eq!(new_user_token.expiration_time, user_token.expiration_time);
+        // An explicit null expiration is rejected (permanent non-expiry is not
+        // allowed), so the expiration set by the edit is kept.
+        assert_eq!(new_user_token.expiration_time, edited_user_token.expiration_time);
         assert!(new_user_token.last_edit_time > user_token.last_edit_time);
         assert_eq!(new_user_token.last_usage_time, user_token.last_usage_time);
         Ok(())
@@ -480,6 +577,19 @@ mod test {
         verify_response(&format!("PUT /user-token/fake_user/{TEST_TOKEN}"), "user_token/edit_nonexistent_user").await?;
         verify_response(&format!("PUT /user-token/regular_user/{TEST_TOKEN}"), "user_token/edit_nonexistent_token")
             .await?;
+
+        // An explicit null expiration (permanent non-expiry) is rejected.
+        verify_response(
+            &format!("PUT /user-token/administrator/{TEST_TOKEN}/?{FIELDS}"),
+            "user_token/edit_null_expiration",
+        )
+        .await?;
+        // Expiration times beyond 10 years in the future are rejected.
+        verify_response(
+            &format!("PUT /user-token/administrator/{TEST_TOKEN}/?{FIELDS}"),
+            "user_token/edit_far_future_expiration",
+        )
+        .await?;
         verify_response(&format!("DELETE /user-token/fake_user/{TEST_TOKEN}"), "user_token/delete_nonexistent_user")
             .await?;
         verify_response(

@@ -2,6 +2,7 @@ use crate::model::enums::UserRank;
 
 pub mod header;
 pub mod password;
+pub mod token_crypto;
 
 #[derive(Clone, Copy)]
 pub struct Client {

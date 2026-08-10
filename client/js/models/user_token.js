@@ -11,6 +11,10 @@ class UserToken extends events.EventTarget {
         this._updateFromResponse({});
     }
 
+    get id() {
+        return this._id;
+    }
+
     get token() {
         return this._token;
     }
@@ -45,6 +49,10 @@ class UserToken extends events.EventTarget {
 
     set note(value) {
         this._note = value;
+    }
+
+    set enabled(value) {
+        this._enabled = value;
     }
 
     static fromResponse(response) {
@@ -94,12 +102,12 @@ class UserToken extends events.EventTarget {
         if (this._note !== this._orig._note) {
             detail.note = this._note;
         }
+        if (this._enabled !== this._orig._enabled) {
+            detail.enabled = this._enabled;
+        }
 
         return api
-            .put(
-                uri.formatApiLink("user-token", userName, this._orig._token),
-                detail
-            )
+            .put(uri.formatApiLink("user-token", userName, this._orig._id), detail)
             .then((response) => {
                 this._updateFromResponse(response);
                 this.dispatchEvent(
@@ -115,12 +123,9 @@ class UserToken extends events.EventTarget {
 
     delete(userName) {
         return api
-            .delete(
-                uri.formatApiLink("user-token", userName, this._orig._token),
-                {
-                    version: this._version,
-                }
-            )
+            .delete(uri.formatApiLink("user-token", userName, this._orig._id), {
+                version: this._version,
+            })
             .then((response) => {
                 this.dispatchEvent(
                     new CustomEvent("delete", {
@@ -135,6 +140,7 @@ class UserToken extends events.EventTarget {
 
     _updateFromResponse(response) {
         const map = {
+            _id: response.id,
             _token: response.token,
             _note: response.note,
             _enabled: response.enabled,
@@ -144,6 +150,13 @@ class UserToken extends events.EventTarget {
             _lastEditTime: response.lastEditTime,
             _lastUsageTime: response.lastUsageTime,
         };
+
+        // Public-only responses omit id and token; keep the current values.
+        for (let key of ["_id", "_token"]) {
+            if (typeof map[key] === "undefined") {
+                delete map[key];
+            }
+        }
 
         Object.assign(this, map);
         Object.assign(this._orig, map);

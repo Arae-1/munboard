@@ -135,7 +135,14 @@ class Url extends Uploadable {
     }
 
     get previewUrl() {
-        return this.url;
+        // Only http(s) and schemeless URLs render as preview links.
+        // Other schemes (e.g. javascript:) would become clickable.
+        const trimmed = this.url.trim();
+        const scheme = trimmed.match(/^[a-z][a-z0-9+.-]*:/i);
+        if (scheme && !/^https?:$/i.test(scheme[0])) {
+            return "";
+        }
+        return trimmed;
     }
 
     get key() {

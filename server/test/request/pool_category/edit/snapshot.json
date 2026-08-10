@@ -9,7 +9,7 @@
         "color": {
             "type": "primitive change",
             "old-value": "default",
-            "new-value": "yellow"
+            "new-value": "#ffff00"
         }
     }
 }
