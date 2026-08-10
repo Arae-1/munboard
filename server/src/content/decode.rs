@@ -21,6 +21,12 @@ use tracing::error;
 /// buffers.
 const MAX_IMAGE_DIMENSION: u32 = 16384; // 16K
 
+/// Maximum width or height (in pixels) at which a PDF page may be rendered.
+/// PDF pages are only used to make a thumbnail, so this smaller cap bounds a
+/// pathological render at ~0.7 s of CPU and stays well under the image decode
+/// budget, while normal pages (letter at -r 100 ≈ 850x1100) are unaffected.
+const MAX_DOCUMENT_RENDER_DIMENSION: u32 = 4096;
+
 /// Maximum number of bytes image decoders may allocate while decoding.
 const MAX_IMAGE_ALLOCATION: u64 = 512 * 1024 * 1024; // 512 MiB
 
@@ -284,10 +290,11 @@ fn pdf_representative_image(file_path: &Path) -> ApiResult<DynamicImage> {
     let prefix = format!("{}.thumb", path_str);
     let png_path = format!("{prefix}.png");
 
-    let max_dimension = MAX_IMAGE_DIMENSION.to_string();
-    // `-W`/`-H` cap the output size so a pathological page cannot force a
-    // multi-GB render. pdftoppm has no built-in timeout, so enforce one here
-    // and kill the process if it is exceeded.
+    let max_dimension = MAX_DOCUMENT_RENDER_DIMENSION.to_string();
+    // `-W`/`-H` cap the output size so a pathological page (e.g. a crafted
+    // 100000x100000 pt page) cannot burn CPU rendering a full 16K image that
+    // the decode budget would reject anyway. pdftoppm has no built-in
+    // timeout, so enforce one here and kill the process if it is exceeded.
     let child = Command::new("pdftoppm")
         .args([
             "-png", "-singlefile", "-f", "1", "-l", "1", "-r", "100",

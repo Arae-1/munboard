@@ -101,6 +101,12 @@ fn decode_credentials(credentials: &str) -> Result<(String, String), Authenticat
 ///
 /// Failed attempts are recorded per username and rate-limited to slow down
 /// brute-forcing; a successful login resets the username's history.
+///
+/// Every attempt is fully verified (DB lookup + argon2) before the rate limit
+/// is consulted, so the correct password is never rejected with 429, even
+/// during a lockout (F-1). Tradeoff: each attempt — including ones answered
+/// 429 — costs one argon2 verification; that is the same cost as before the
+/// limiter existed, and is bounded by nginx-level rate limiting.
 async fn basic_access_authentication(
     state: &AppState,
     credentials: &str,
@@ -109,9 +115,6 @@ async fn basic_access_authentication(
 
     let window = Duration::from_secs(state.config.rate_limit_window_secs);
     let now = Instant::now();
-    if let Some(retry_after_secs) = failed_login_retry_after(&username, state.config.rate_limit_max_failures, window, now) {
-        return Err(AuthenticateError::RateLimited { retry_after_secs });
-    }
 
     let mut conn = state.connection_pool.get().await.map_err(|err| AuthenticateError::Auth(err.into()))?;
 
@@ -137,6 +140,16 @@ async fn basic_access_authentication(
             })
         }
         None => {
+            // The limit is checked after the (failed) verification above but
+            // before recording this attempt, so the budget is unchanged from
+            // the pre-fix flow: `max_failures` failed attempts answer 401 and
+            // the next one answers 429. A correct password never reaches this
+            // branch, so it always succeeds (F-1).
+            if let Some(retry_after_secs) =
+                failed_login_retry_after(&username, state.config.rate_limit_max_failures, window, now)
+            {
+                return Err(AuthenticateError::RateLimited { retry_after_secs });
+            }
             record_failed_login(&username, window, Instant::now());
             Err(AuthenticateError::Auth(AuthenticationError::UsernamePasswordMismatch))
         }
@@ -170,10 +183,23 @@ async fn token_authentication(state: &AppState, credentials: &str) -> Result<Aut
         .ok_or(AuthenticateError::Auth(AuthenticationError::ExpiredToken))
 }
 
-/// Sliding-window record of failed basic-auth attempts, keyed by username.
-/// Only failed attempts count; a successful login clears the username's history.
+/// Sliding-window record of failed basic-auth attempts, keyed by the
+/// lowercased username (names are ASCII-only per `username_regex`, so this
+/// matches the CITEXT login comparison exactly and case variants of a name
+/// share one budget — F-2). Only failed attempts count; a successful login
+/// clears the username's history.
 static FAILED_LOGIN_ATTEMPTS: LazyLock<Mutex<HashMap<String, Vec<Instant>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Upper bound on distinct usernames kept in [`FAILED_LOGIN_ATTEMPTS`]. When
+/// the map exceeds this (e.g. botnet-scale username rotation), entries are
+/// pruned and then the map is cleared as a last resort, keeping memory bounded.
+const MAX_FAILED_LOGIN_KEYS: usize = 10_000;
+
+/// Failed attempts for usernames longer than this are not recorded at all:
+/// the username regex caps name length, so such names can never match an
+/// account, cannot lock anyone out, and would only waste key space (F-3).
+const MAX_RECORDED_USERNAME_LEN: usize = 64;
 
 /// Returns the number of seconds to wait when `username` has exceeded
 /// `max_failures` failed attempts within `window`, or `None` when the username
@@ -182,7 +208,7 @@ fn failed_login_retry_after(username: &str, max_failures: usize, window: Duratio
     let attempts = FAILED_LOGIN_ATTEMPTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let cutoff = now.checked_sub(window).unwrap_or(now);
     let failures: Vec<Instant> = attempts
-        .get(username)
+        .get(&username.to_lowercase())
         .map(|times| times.iter().copied().filter(|&time| time > cutoff).collect())
         .unwrap_or_default();
     (failures.len() >= max_failures).then(|| {
@@ -193,17 +219,33 @@ fn failed_login_retry_after(username: &str, max_failures: usize, window: Duratio
 
 /// Records a failed basic-auth attempt for `username`, pruning stale entries.
 fn record_failed_login(username: &str, window: Duration, now: Instant) {
+    if username.len() > MAX_RECORDED_USERNAME_LEN {
+        return;
+    }
     let mut attempts = FAILED_LOGIN_ATTEMPTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let cutoff = now.checked_sub(window).unwrap_or(now);
-    let failures = attempts.entry(username.to_owned()).or_default();
+    let failures = attempts.entry(username.to_lowercase()).or_default();
     failures.retain(|&time| time > cutoff);
     failures.push(now);
+
+    if attempts.len() > MAX_FAILED_LOGIN_KEYS {
+        // Prune every key against the cutoff and drop keys that emptied out.
+        attempts.retain(|_, times| {
+            times.retain(|&time| time > cutoff);
+            !times.is_empty()
+        });
+        // Still over the cap (botnet-scale rotation): start over rather than
+        // letting the map grow without bound.
+        if attempts.len() > MAX_FAILED_LOGIN_KEYS {
+            attempts.clear();
+        }
+    }
 }
 
 /// Clears the failed-attempt history of `username` after a successful login.
 fn clear_failed_logins(username: &str) {
     let mut attempts = FAILED_LOGIN_ATTEMPTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    attempts.remove(username);
+    attempts.remove(&username.to_lowercase());
 }
 
 #[cfg(test)]

@@ -232,7 +232,9 @@ fn generate_temporary_password(length: u8) -> String {
     path = "/password-reset/{identifier}",
     tag = PASSWORD_RESET_TAG,
     params(
-        ("identifier" = String, Path, description = "User email or username"),
+        // The confirm endpoint resolves the user by name only (unlike
+        // request_reset, which also accepts an email address).
+        ("identifier" = String, Path, description = "Username"),
     ),
     request_body = ResetToken,
     responses(
@@ -251,9 +253,15 @@ async fn reset_password(
     state
         .connection_pool
         .transaction(move |conn| {
+            // Lock the user row for the transaction: a concurrent confirm with
+            // the same token then blocks on this read, re-reads the committed
+            // row after the first one commits, sees the cleared token, and
+            // fails with UnauthorizedPasswordReset instead of both succeeding
+            // (TOCTOU, I-2).
             let (user_id, _name, _email, stored_token, expires) = user::table
                 .select((user::id, user::name, user::email, user::password_reset_token, user::password_reset_expires))
                 .filter(user::name.eq(&username))
+                .for_update()
                 .first::<(i64, SmallString, Option<SmallString>, Option<String>, Option<DateTime>)>(conn)
                 .optional()?
                 .ok_or(ApiError::UnauthorizedPasswordReset)?;

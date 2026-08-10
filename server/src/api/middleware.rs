@@ -241,7 +241,7 @@ mod test {
     use crate::api;
     use crate::api::error::ApiResult;
     use crate::auth::{header, token_crypto};
-    use crate::schema::user_token;
+    use crate::schema::{user, user_token};
     use crate::test::*;
     use crate::time::DateTime;
     use axum::ServiceExt;
@@ -387,5 +387,105 @@ mod test {
             .await;
         assert_eq!(response.status_code(), 200);
         Ok(())
+    }
+
+    /// Creates a throwaway user via anonymous self-registration. A unique name
+    /// keeps the shared failed-login map off the seeded users' keys.
+    async fn create_limiter_victim(server: &TestServer) -> (String, &'static str) {
+        let username = format!("limiter_victim_{}", &Uuid::new_v4().simple().to_string()[..12]);
+        let password = TEST_PASSWORD;
+        let response = server
+            .post("/users")
+            .json(&json!({"name": &username, "password": password, "rank": "regular"}))
+            .await;
+        assert_eq!(response.status_code(), 200);
+        (username, password)
+    }
+
+    /// Deletes a throwaway user authenticated as itself (user_delete_self = regular).
+    async fn delete_limiter_victim(server: &TestServer, username: &str, auth: &str) -> ApiResult<()> {
+        let mut conn = get_connection()?;
+        let dt: DateTime = user::table
+            .select(user::last_edit_time)
+            .filter(user::name.eq(username))
+            .first(&mut conn)?;
+        let response = server
+            .delete(&format!("/user/{username}"))
+            .add_header(AUTHORIZATION, auth)
+            .json(&json!({"version": dt}))
+            .await;
+        assert_eq!(response.status_code(), 200);
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn basic_auth_correct_password_works_during_rate_limit() -> ApiResult<()> {
+        let app_state = get_state();
+        let (router, _) = api::routes(app_state).split_for_parts();
+        let app = NormalizePathLayer::trim_trailing_slash().layer(router);
+        let server = TestServer::new(ServiceExt::<Request>::into_make_service(app))
+            .expect("Test server must be constructible");
+
+        let (username, password) = create_limiter_victim(&server).await;
+
+        // Exhaust the budget with wrong passwords: `max_failures` (20) failed
+        // attempts answer 401, the next one is rate-limited with 429.
+        let wrong = header::basic_credentials_for(&username, "wrong_password");
+        for _ in 0..20 {
+            let response = server.get("/comment/1").add_header(AUTHORIZATION, &wrong).await;
+            assert_eq!(response.status_code(), 401);
+        }
+        let response = server.get("/comment/1").add_header(AUTHORIZATION, &wrong).await;
+        assert_eq!(response.status_code(), 429);
+        let body: serde_json::Value = serde_json::from_slice(response.as_bytes())?;
+        assert_eq!(body["name"], "RateLimited");
+
+        // F-1 regression: the correct password must still authenticate during
+        // the lockout instead of being rejected with 429.
+        let correct = header::basic_credentials_for(&username, password);
+        let response = server.get("/comment/1").add_header(AUTHORIZATION, &correct).await;
+        assert_eq!(response.status_code(), 200);
+
+        delete_limiter_victim(&server, &username, &correct).await
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn basic_auth_case_variant_shares_rate_limit() -> ApiResult<()> {
+        let app_state = get_state();
+        let (router, _) = api::routes(app_state).split_for_parts();
+        let app = NormalizePathLayer::trim_trailing_slash().layer(router);
+        let server = TestServer::new(ServiceExt::<Request>::into_make_service(app))
+            .expect("Test server must be constructible");
+
+        let (username, password) = create_limiter_victim(&server).await;
+
+        // Lock the username out with 21 wrong-password attempts.
+        let wrong = header::basic_credentials_for(&username, "wrong_password");
+        for _ in 0..20 {
+            let response = server.get("/comment/1").add_header(AUTHORIZATION, &wrong).await;
+            assert_eq!(response.status_code(), 401);
+        }
+        let response = server.get("/comment/1").add_header(AUTHORIZATION, &wrong).await;
+        assert_eq!(response.status_code(), 429);
+
+        // F-2: an ALL-CAPS variant of the username shares the budget (the key
+        // is normalized to lowercase). Pre-fix this would answer 401 because
+        // the map key was case-sensitive.
+        let caps_username = username.to_ascii_uppercase();
+        let wrong_caps = header::basic_credentials_for(&caps_username, "wrong_password");
+        let response = server.get("/comment/1").add_header(AUTHORIZATION, &wrong_caps).await;
+        assert_eq!(response.status_code(), 429);
+        let body: serde_json::Value = serde_json::from_slice(response.as_bytes())?;
+        assert_eq!(body["name"], "RateLimited");
+
+        // The correct password also authenticates through the normalized key
+        // (F-1), clearing the shared history.
+        let correct_caps = header::basic_credentials_for(&caps_username, password);
+        let response = server.get("/comment/1").add_header(AUTHORIZATION, &correct_caps).await;
+        assert_eq!(response.status_code(), 200);
+
+        delete_limiter_victim(&server, &username, &correct_caps).await
     }
 }

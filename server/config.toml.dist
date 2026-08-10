@@ -90,7 +90,7 @@ enable_safety = false
 # Don't make these more restrictive unless you want to annoy people
 # If you do customize them, make sure to update the instructions in the registration form template as well
 username_regex = "^[a-zA-Z0-9_-]{1,32}$"
-password_regex = "^.{5,}$"
+password_regex = "^.{8,}$"
 
 tag_name_regex          = "^\\S+$"
 tag_category_name_regex = "^[^\\s%+#/]+$"

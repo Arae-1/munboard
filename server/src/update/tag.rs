@@ -193,6 +193,44 @@ pub fn merge(conn: &mut PgConnection, absorbed_id: i64, merge_to_id: i64) -> Api
         })
         .filter(|implication| implication.parent_id != implication.child_id)
         .collect();
+
+    // Rewriting edges during a merge can close cycles that create/update reject
+    // (they build the graph with FetchMode::Acyclic), so detect them before any
+    // table writes. Seed the graph with every merged edge — each one touches
+    // merge_to_id, so any new cycle through merge_to is reachable — then expand
+    // transitively over the live table exactly like get_or_create_tag_ids does:
+    // repeatedly load edges whose parent is in the frontier, insert them, and
+    // continue with their children until no new nodes appear.
+    let mut dependency_graph = DependencyGraph::new(&[merge_to_id]);
+    let mut frontier: Vec<i64> = merged_implications
+        .iter()
+        .flat_map(|implication| [implication.parent_id, implication.child_id])
+        .collect();
+    for implication in &merged_implications {
+        dependency_graph.insert(*implication);
+    }
+    loop {
+        let implications: Vec<TagImplication> = tag_implication::table
+            .filter(tag_implication::parent_id.eq_any(&frontier))
+            .distinct()
+            .load(conn)?;
+
+        // Remove ids we've already seen
+        let previous_len = dependency_graph.len();
+        frontier = implications
+            .into_iter()
+            .filter(|&implication| dependency_graph.insert(implication))
+            .map(|implication| implication.child_id)
+            .collect();
+
+        if dependency_graph.len() == previous_len {
+            break;
+        }
+    }
+    if dependency_graph.has_cycle() {
+        return Err(ApiError::CyclicDependency(ResourceType::TagImplication));
+    }
+
     diesel::delete(tag_implication::table)
         .filter(tag_implication::parent_id.eq(merge_to_id))
         .or_filter(tag_implication::child_id.eq(merge_to_id))

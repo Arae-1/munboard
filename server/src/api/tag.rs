@@ -577,7 +577,7 @@ mod test {
     use crate::api::error::ApiResult;
     use crate::model::enums::{ResourceType, UserRank};
     use crate::model::tag::Tag;
-    use crate::schema::{database_statistics, tag, tag_name, tag_statistics};
+    use crate::schema::{database_statistics, tag, tag_implication, tag_name, tag_statistics};
     use crate::search::tag::Token;
     use crate::string::SmallString;
     use crate::test::*;
@@ -732,6 +732,37 @@ mod test {
         assert_ne!(new_implication_count, implication_count);
         assert_ne!(new_suggestion_count, suggestion_count);
         reset_database();
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn merge_cyclic() -> ApiResult<()> {
+        // "forest" implies both "plant" and "tree", and "tree" implies "plant".
+        // Merging "forest" into "plant" would rewrite the edge forest -> tree
+        // into plant -> tree, closing the cycle plant -> tree -> plant.
+        let get_implications = |conn: &mut PgConnection| -> QueryResult<Vec<(i64, i64)>> {
+            tag_implication::table
+                .select((tag_implication::parent_id, tag_implication::child_id))
+                .load(conn)
+        };
+        let get_tag_count = |conn: &mut PgConnection, name: &str| -> QueryResult<i64> {
+            tag::table
+                .inner_join(tag_name::table)
+                .filter(tag_name::name.eq(name))
+                .count()
+                .get_result(conn)
+        };
+
+        let mut conn = get_connection()?;
+        let implications_before = get_implications(&mut conn)?;
+
+        verify_response(&format!("POST /tag-merge/?{FIELDS}"), "tag/merge_cyclic").await?;
+
+        // The rejected merge must leave the database untouched
+        assert_eq!(get_tag_count(&mut conn, "forest")?, 1);
+        assert_eq!(get_tag_count(&mut conn, "plant")?, 1);
+        assert_eq!(get_implications(&mut conn)?, implications_before);
         Ok(())
     }
 
