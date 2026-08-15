@@ -169,6 +169,11 @@ where
         })
 }
 
+/// Upper bound on the `offset` pagination parameter. A request cannot force a
+/// full table scan through an arbitrarily large SQL OFFSET, so values above
+/// this are silently clamped (mirroring how `limit` is clamped per endpoint).
+const MAX_OFFSET: i64 = 1_000_000;
+
 /// Deserializes `offset` as a non-negative integer. Absent values remain `None`.
 fn deserialize_non_negative_i64<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
 where
@@ -181,7 +186,7 @@ where
             &"a non-negative i64",
         ));
     }
-    Ok(Some(value))
+    Ok(Some(value.min(MAX_OFFSET)))
 }
 
 /// A result of search operation that doesn't involve paging.

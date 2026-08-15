@@ -45,6 +45,14 @@ http {
         server __BACKEND__:6666;
     }
 
+    # Rate limiting: bound all API traffic per client IP to blunt account
+    # flooding, upload spam, and password-reset bombing. `burst` permits short
+    # spikes; `nodelay` drops excess requests immediately. Tune `rate` to your
+    # deployment. Behind Cloudflare the real client IP arrives in the
+    # CF-Connecting-IP header set by the edge, not $remote_addr; change the key
+    # if your proxy uses a different header.
+    limit_req_zone $http_cf_connecting_ip zone=api:10m rate=10r/s;
+
     server {
         listen 80 default_server;
 
@@ -86,6 +94,7 @@ http {
 
         location ~ ^/api/(.*)$ {
             tcp_nodelay on;
+            limit_req zone=api burst=20 nodelay;
 
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Real-IP $remote_addr;

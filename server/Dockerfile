@@ -116,7 +116,7 @@ WORKDIR /opt/app
 ENV RUST_BACKTRACE=full
 
 # Install tools needed at runtime: poppler-utils for PDF thumbnail rendering
-RUN apk add --no-cache poppler-utils \
+RUN apk add --no-cache 'poppler-utils>=25.12.0' \
   && mkdir -p /data \
   && addgroup -g ${PGID} app \
   && adduser -SDH -h /opt/app -g '' -G app -u ${PUID} app \

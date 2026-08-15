@@ -97,7 +97,7 @@ tag_category_name_regex = "^[^\\s%+#/]+$"
 # Custom field names are reflected into HTML, so in addition to the usual
 # exclusions (whitespace, % + # /) disallow characters that can break out of
 # tags or attributes: < > " ' & = ` (backtick)
-custom_field_name_regex = "^[^\\s%+#/<>\"'&=]{1,64}$"
+custom_field_name_regex = "^[^\\s%+#/<>\"'&=\\\\`]{1,64}$"
 
 # contact_email = example: bob@example.com. # Meant for manual password reset procedures
 

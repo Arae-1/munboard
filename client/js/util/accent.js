@@ -1,6 +1,12 @@
 "use strict";
 
 function apply(color) {
+    // Only hex colors are accepted. The value is interpolated into SVG
+    // attributes and a CSS custom property, so reject anything that could
+    // break out of those contexts (self-XSS hardening).
+    if (typeof color !== "string" || !/^#[0-9a-fA-F]{3,8}$/.test(color)) {
+        color = "#BC3736";
+    }
     document.documentElement.style.setProperty("--accent-color", color);
     const svg =
         `<svg viewBox='0 0 155.03 155.03' ` +

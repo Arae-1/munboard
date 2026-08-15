@@ -106,7 +106,7 @@ function makeSelect(options) {
                 makeElement(
                     "option",
                     { value: key, selected: key === options.selectedKey },
-                    options.keyValues[key]
+                    misc.escapeHtml(options.keyValues[key])
                 )
             )
         )

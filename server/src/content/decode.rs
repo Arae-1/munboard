@@ -48,26 +48,24 @@ pub fn representative_image(file_path: &Path, mime_type: MimeType) -> ApiResult<
 
 /// Returns if the video at `path` has an audio channel.
 pub fn video_has_audio(path: &Path) -> ApiResult<bool> {
-    let path_str = path.to_string_lossy();
-    let iter = FfmpegCommand::new_with_path(FFMPEG_PATH)
-        .input(path_str)
-        .args(["-c", "copy", "-t", "0", "-f", "null", "-"])
-        .spawn()?
-        .iter()
-        .map_err(|err| ApiError::FfmpegError(err.into_boxed_dyn_error()))?;
-
-    for event in iter {
-        match event {
-            FfmpegEvent::ParsedInputStream(stream) if stream.is_audio() => {
+    // Bound the probe with the same deadline as the other ffmpeg calls so a
+    // pathological container cannot stall this call indefinitely.
+    let (mut child, rx) = spawn_ffmpeg_events(path, &["-threads", "1", "-c", "copy", "-t", "0", "-f", "null", "-"])?;
+    let deadline = Instant::now() + FFMPEG_TIMEOUT;
+    loop {
+        match recv_ffmpeg_event(&mut child, &rx, deadline)? {
+            Some(FfmpegEvent::ParsedInputStream(stream)) if stream.is_audio() => {
+                let _ = child.as_inner_mut().kill();
+                let _ = child.wait();
                 return Ok(true);
             }
-            FfmpegEvent::Log(LogLevel::Error | LogLevel::Fatal, err) | FfmpegEvent::Error(err) => {
+            Some(FfmpegEvent::Log(LogLevel::Error | LogLevel::Fatal, err) | FfmpegEvent::Error(err)) => {
                 return Err(ApiError::FfmpegError(err.into()));
             }
-            _ => {}
+            Some(_) => {}
+            None => return Ok(false),
         }
     }
-    Ok(false)
 }
 
 /// Returns the post type based on file content.
@@ -282,45 +280,66 @@ fn decode_pdf_render(png_path: &Path) -> ApiResult<DynamicImage> {
     reader.decode().map_err(ApiError::from)
 }
 
+/// Upper bound on the number of video streams inspected when detecting AVIF
+/// animation. A malicious container can declare many tracks, each of which
+/// would otherwise spawn its own ffmpeg process; AVIF animation is a single
+/// image sequence, so this small cap is always sufficient.
+const MAX_AVIF_STREAMS: usize = 8;
+
 /// Uses `FFmpeg` to determine if a file contains multiple frames
 fn avif_is_animated(path: &Path) -> ApiResult<bool> {
-    let path_str = path.to_string_lossy();
-    let video_stream_count = FfmpegCommand::new_with_path(FFMPEG_PATH)
-        .input(&path_str)
-        .spawn()?
-        .iter()
-        .map_err(|err| ApiError::FfmpegError(err.into_boxed_dyn_error()))?
-        .filter(|event| matches!(event, FfmpegEvent::ParsedInputStream(stream) if stream.is_video()))
-        .count();
+    // Count video streams under the same deadline as the other ffmpeg probes
+    // so a pathological container cannot stall this call indefinitely.
+    let (mut child, rx) = spawn_ffmpeg_events(path, &["-c", "copy", "-t", "0", "-f", "null", "-"])?;
+    let deadline = Instant::now() + FFMPEG_TIMEOUT;
+    let mut video_stream_count = 0usize;
+    loop {
+        match recv_ffmpeg_event(&mut child, &rx, deadline)? {
+            Some(FfmpegEvent::ParsedInputStream(stream)) if stream.is_video() => {
+                video_stream_count += 1;
+            }
+            Some(FfmpegEvent::Log(LogLevel::Error | LogLevel::Fatal, err) | FfmpegEvent::Error(err)) => {
+                return Err(ApiError::FfmpegError(err.into()));
+            }
+            Some(_) => {}
+            None => break,
+        }
+    }
 
-    for stream_index in 0..video_stream_count {
-        let iter = FfmpegCommand::new_with_path(FFMPEG_PATH)
-            .input(&path_str)
-            .args([
+    for stream_index in 0..video_stream_count.min(MAX_AVIF_STREAMS) {
+        let map_arg = format!("0:v:{stream_index}");
+        let (mut child, rx) = spawn_ffmpeg_events(
+            path,
+            &[
+                "-threads",
+                "1",
                 "-map",
-                &format!("0:v:{stream_index}"),
+                map_arg.as_str(),
                 "-frames:v",
                 "2",
                 "-vf",
                 "scale=1:1:flags=neighbor",
-            ])
-            .rawvideo()
-            .spawn()?
-            .iter()
-            .map_err(|err| ApiError::FfmpegError(err.into_boxed_dyn_error()))?;
-
+                "-f",
+                "rawvideo",
+                "-",
+            ],
+        )?;
+        let deadline = Instant::now() + FFMPEG_TIMEOUT;
         let mut frames = 0;
-        for event in iter {
-            match event {
-                FfmpegEvent::OutputFrame(_) => frames += 1,
-                FfmpegEvent::Log(LogLevel::Error | LogLevel::Fatal, err) | FfmpegEvent::Error(err) => {
+        loop {
+            match recv_ffmpeg_event(&mut child, &rx, deadline)? {
+                Some(FfmpegEvent::OutputFrame(_)) => {
+                    frames += 1;
+                    if frames > 1 {
+                        return Ok(true);
+                    }
+                }
+                Some(FfmpegEvent::Log(LogLevel::Error | LogLevel::Fatal, err) | FfmpegEvent::Error(err)) => {
                     return Err(ApiError::FfmpegError(err.into()));
                 }
-                _ => {}
+                Some(_) => {}
+                None => break,
             }
-        }
-        if frames > 1 {
-            return Ok(true);
         }
     }
     Ok(false)
