@@ -95,6 +95,20 @@ class PostMainView {
                 router.show(uri.formatClientLink("post", ctx.post.id, "edit"));
             }
         });
+        if (!ctx.editMode) {
+            keyboard.bind("f", () => {
+                const fitModes = [
+                    "fit-original",
+                    "fit-width",
+                    "fit-height",
+                    "fit-both",
+                ];
+                const currentMode = this.sidebarControl._getFitMode();
+                const currentIndex = fitModes.indexOf(currentMode);
+                const nextMode = fitModes[(currentIndex + 1) % fitModes.length];
+                this.sidebarControl._hostNode.querySelector(`.${nextMode}`).click();
+            });
+        }
         keyboard.bind(["a", "left"], showPreviousImage);
         keyboard.bind(["d", "right"], showNextImage);
         keyboard.bind("del", (e) => {
