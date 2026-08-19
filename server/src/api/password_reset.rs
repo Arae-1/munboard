@@ -413,7 +413,7 @@ mod test {
 
     #[tokio::test]
     #[serial]
-    async fn request_reset_writes_token_in_background() -> ApiResult<()> {
+    async fn request_reset_writes_token_in_background_for_username_and_email() -> ApiResult<()> {
         let mut app_state = get_state();
         // Point SMTP at a port that fails immediately: the test only observes
         // the database write, never the email delivery.
@@ -433,26 +433,68 @@ mod test {
         let server = TestServer::new(ServiceExt::<Request>::into_make_service(app))
             .expect("Test server must be constructible");
 
-        let response = server.get("/password-reset/regular_user").await;
+        // Preserve coverage for username lookup as well as the email path.
+        {
+            let mut conn = get_connection()?;
+            diesel::update(user::table.filter(user::email.eq("email@domain.com")))
+                .set((user::password_reset_token.eq(None::<String>), user::password_reset_expires.eq(None::<DateTime>)))
+                .execute(&mut conn)?;
+            let response = server.get("/password-reset/regular_user").await;
+            assert_eq!(response.status_code(), 200);
+            assert_eq!(response.json::<Value>(), Value::Null);
+
+            let mut username_token = None;
+            for _ in 0..200 {
+                username_token = user::table
+                    .select(user::password_reset_token)
+                    .filter(user::email.eq("email@domain.com"))
+                    .first::<Option<String>>(&mut conn)?;
+                if username_token.is_some() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+            }
+            assert!(username_token.is_some(), "username reset token was not written by the background task");
+        }
+        // Resolve the account by email, not username.
+        let mut conn = get_connection()?;
+        diesel::update(user::table.filter(user::email.eq("email@domain.com")))
+            .set((user::password_reset_token.eq(None::<String>), user::password_reset_expires.eq(None::<DateTime>)))
+            .execute(&mut conn)?;
+        let response = server.get("/password-reset/email@domain.com").await;
         assert_eq!(response.status_code(), 200);
         assert_eq!(response.json::<Value>(), Value::Null);
 
         // The token is written asynchronously, so poll briefly for it
         // (L-08 regression test).
-        let mut conn = get_connection()?;
-        let mut written = false;
+        let mut pending_token = None;
         for _ in 0..200 {
-            let pending: Option<String> = user::table
+            pending_token = user::table
                 .select(user::password_reset_token)
-                .filter(user::name.eq("regular_user"))
-                .first(&mut conn)?;
-            if pending.is_some() {
-                written = true;
+                .filter(user::email.eq("email@domain.com"))
+                .first::<Option<String>>(&mut conn)?;
+            if pending_token.is_some() {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(25)).await;
         }
-        assert!(written, "reset token was not written by the background task");
+        let pending_token = pending_token.expect("reset token was not written by the background task");
+
+        // A still-valid token must not be replaced by a later request, which
+        // also prevents sending a second reset email for the same token.
+        let response = server.get("/password-reset/email@domain.com").await;
+        assert_eq!(response.status_code(), 200);
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let current_token: Option<String> = user::table
+            .select(user::password_reset_token)
+            .filter(user::email.eq("email@domain.com"))
+            .first(&mut conn)?;
+        assert_eq!(current_token.as_deref(), Some(pending_token.as_str()));
+
+        // Keep the shared test database reusable for other tests.
+        diesel::update(user::table.filter(user::email.eq("email@domain.com")))
+            .set((user::password_reset_token.eq(None::<String>), user::password_reset_expires.eq(None::<DateTime>)))
+            .execute(&mut conn)?;
         Ok(())
     }
 }

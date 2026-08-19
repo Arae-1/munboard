@@ -370,6 +370,11 @@ class Api extends events.EventTarget {
     }
 
     logout(notify = true) {
+        if (!this.userName || !this.token) {
+            this._logout(notify);
+            return;
+        }
+
         let self = this;
         this.deleteToken(this.userName, this.token).then(
             (response) => {
