@@ -6,6 +6,7 @@ const events = require("./events.js");
 const progress = require("./util/progress.js");
 const uri = require("./util/uri.js");
 
+const authChangeStorageKey = "oxi-auth-change";
 let fileTokens = {};
 let remoteConfig = null;
 let remoteConfigPromise = null;
@@ -42,6 +43,49 @@ class Api extends events.EventTarget {
             ["administrator", "Administrator"],
             ["nobody", "Nobody"],
         ]);
+        if (typeof window !== "undefined" && window.addEventListener) {
+            window.addEventListener("storage", (event) => {
+                if (event.key === authChangeStorageKey) {
+                    this._syncAuthFromCookie();
+                }
+            });
+        }
+    }
+
+    _notifyAuthChange() {
+        try {
+            if (typeof window !== "undefined" && window.localStorage) {
+                window.localStorage.setItem(
+                    authChangeStorageKey,
+                    Date.now() + "-" + Math.random()
+                );
+            }
+        } catch (error) {
+            // Storage may be unavailable or blocked by the browser.
+        }
+    }
+
+    _syncAuthFromCookie() {
+        try {
+            const authCookie = cookies.get("auth");
+            const auth = authCookie ? JSON.parse(authCookie) : null;
+            if (auth && auth.user && auth.token) {
+                if (auth.token === this.token) {
+                    return;
+                }
+                const loginPromise = this.loginWithToken(
+                    auth.user,
+                    auth.token,
+                    true,
+                    false
+                );
+                loginPromise.catch(() => {});
+            } else if (this.user || this.userName || this.token) {
+                this._logout(false);
+            }
+        } catch (error) {
+            // Cross-tab synchronization must not affect the current page.
+        }
     }
 
     get(url, options) {
@@ -179,13 +223,14 @@ class Api extends events.EventTarget {
     }
 
     loginFromCookies() {
-        const auth = cookies.getJSON("auth");
+        const authCookie = cookies.get("auth");
+        const auth = authCookie ? JSON.parse(authCookie) : null;
         return auth && auth.user && auth.token
             ? this.loginWithToken(auth.user, auth.token, true)
             : Promise.resolve();
     }
 
-    loginWithToken(userName, token, doRemember) {
+    loginWithToken(userName, token, doRemember, notify = true) {
         this.cache = {};
         return new Promise((resolve, reject) => {
             this.userName = userName;
@@ -204,16 +249,19 @@ class Api extends events.EventTarget {
                     // cookies requires architectural changes.
                     cookies.set(
                         "auth",
-                        { user: userName, token: token },
+                        JSON.stringify({ user: userName, token: token }),
                         options
                     );
                     this.user = response;
                     resolve();
                     this.dispatchEvent(new CustomEvent("login"));
+                    if (notify) {
+                        this._notifyAuthChange();
+                    }
                 },
                 (error) => {
                     reject(error);
-                    this.logout();
+                    this.logout(notify);
                 }
             );
         });
@@ -234,12 +282,13 @@ class Api extends events.EventTarget {
                 (response) => {
                     cookies.set(
                         "auth",
-                        { user: userName, token: response.token },
+                        JSON.stringify({ user: userName, token: response.token }),
                         options
                     );
                     this.userName = userName;
                     this.token = response.token;
                     this.userPassword = null;
+                    resolve();
                 },
                 (error) => {
                     reject(error);
@@ -269,7 +318,7 @@ class Api extends events.EventTarget {
                             options.sameSite = "Strict";
                             cookies.set(
                                 "auth",
-                                { user: userName, token: null },
+                                JSON.stringify({ user: userName, token: null }),
                                 options
                             );
                             resolve();
@@ -299,10 +348,18 @@ class Api extends events.EventTarget {
                     }
                     options.secure = this.getSecureCookie();
                     options.sameSite = "Strict";
-                    this.createToken(this.userName, options);
-                    this.user = response;
-                    resolve();
-                    this.dispatchEvent(new CustomEvent("login"));
+                    this.createToken(this.userName, options).then(
+                        () => {
+                            this.user = response;
+                            resolve();
+                            this.dispatchEvent(new CustomEvent("login"));
+                            this._notifyAuthChange();
+                        },
+                        (error) => {
+                            reject(error);
+                            this.logout();
+                        }
+                    );
                 },
                 (error) => {
                     reject(error);
@@ -312,24 +369,27 @@ class Api extends events.EventTarget {
         });
     }
 
-    logout() {
+    logout(notify = true) {
         let self = this;
         this.deleteToken(this.userName, this.token).then(
             (response) => {
-                self._logout();
+                self._logout(notify);
             },
             (error) => {
-                self._logout();
+                self._logout(notify);
             }
         );
     }
 
-    _logout() {
+    _logout(notify = true) {
         this.user = null;
         this.userName = null;
         this.userPassword = null;
         this.token = null;
         this.dispatchEvent(new CustomEvent("logout"));
+        if (notify) {
+            this._notifyAuthChange();
+        }
     }
 
     forget() {

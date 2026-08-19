@@ -10,7 +10,6 @@ const LoginView = require("../views/login_view.js");
 
 class LoginController {
     constructor() {
-        api.forget();
         topNavigation.activate("login");
         topNavigation.setTitle("Login");
 
