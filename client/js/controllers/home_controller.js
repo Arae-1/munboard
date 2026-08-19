@@ -41,6 +41,10 @@ class HomeController {
     showError(message) {
         this._homeView.showError(message);
     }
+
+    showPlainTextSuccess(message) {
+        this._homeView.showPlainTextSuccess(message);
+    }
 }
 
 module.exports = (router) => {

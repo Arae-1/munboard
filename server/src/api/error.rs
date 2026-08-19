@@ -121,6 +121,8 @@ pub enum ApiError {
     SelfMerge(ResourceType),
     StdIo(#[from] std::io::Error),
     TaskJoin(#[from] tokio::task::JoinError),
+    #[error("A password reset link is already active. Use the existing link or wait for it to expire.")]
+    ResetAlreadyRequested,
     #[error("Password reset token is invalid")]
     UnauthorizedPasswordReset,
     UnsupportedExtension(#[from] crate::model::enums::ParseExtensionError),
@@ -147,6 +149,7 @@ impl ApiError {
             | Self::MissingMetadata
             | Self::QueryTooLong(_) => StatusCode::BAD_REQUEST,
             Self::NotLoggedIn | Self::Password(_) | Self::UnauthorizedPasswordReset => StatusCode::UNAUTHORIZED,
+            Self::ResetAlreadyRequested => StatusCode::CONFLICT,
             Self::Hidden(_) | Self::InsufficientPrivileges => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::AlreadyExists(_) | Self::ResourceModified => StatusCode::CONFLICT,
@@ -245,6 +248,7 @@ impl ApiError {
             Self::SelfMerge(_) => "Self Merge",
             Self::StdIo(_) => "IO Error",
             Self::TaskJoin(_) => "Task Join Error",
+            Self::ResetAlreadyRequested => "Reset Already Requested",
             Self::UnauthorizedPasswordReset => "Unauthorized Password Reset",
             Self::UnsupportedExtension(_) => "Unsupported extension",
         }
@@ -342,7 +346,7 @@ pub fn map_unique_or_foreign_key_violation<T>(
 
 /// Response body for errors.
 #[derive(Serialize, ToSchema)]
-struct ErrorResponse {
+pub struct ErrorResponse {
     name: ErrorName,
     title: &'static str,
     description: String,

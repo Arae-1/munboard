@@ -357,6 +357,29 @@ function showMessage(target, message, className) {
     messagesHolderNode.appendChild(wrapperNode);
     return true;
 }
+function showPlainTextMessage(target, message, className) {
+    if (!message) {
+        message = "Unknown message";
+    }
+    const messagesHolderNode = target.querySelector(".messages");
+    if (!messagesHolderNode) {
+        return false;
+    }
+    const textNode = document.createElement("div");
+    textNode.textContent = message;
+    textNode.classList.add("message");
+    textNode.classList.add(className);
+    const wrapperNode = document.createElement("div");
+    wrapperNode.classList.add("message-wrapper");
+    wrapperNode.appendChild(textNode);
+    messagesHolderNode.appendChild(wrapperNode);
+    return true;
+}
+
+function showPlainTextSuccess(target, message) {
+    return showPlainTextMessage(target, message, "success");
+}
+
 
 function appendExclamationMark() {
     if (!document.title.startsWith("!")) {
@@ -604,6 +627,8 @@ module.exports = {
     clearMessages: clearMessages,
     appendExclamationMark: appendExclamationMark,
     showError: showError,
+    showPlainTextMessage: showPlainTextMessage,
+    showPlainTextSuccess: showPlainTextSuccess,
     showSuccess: showSuccess,
     showInfo: showInfo,
 };

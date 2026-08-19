@@ -35,10 +35,9 @@ pub fn routes() -> OpenApiRouter<AppState> {
 /// password also owns the mailbox, which is a strong indication they are the
 /// rightful owner of the account.
 ///
-/// For security, this endpoint always returns 200 regardless of whether the
-/// user exists, has an email configured, or already has a pending reset token,
-/// to prevent user enumeration. A still-valid pending token is never
-/// overwritten and no duplicate email is sent.
+/// For an identifier with an active reset link, this endpoint returns 409 so
+/// the existing link can be reused. Unknown users and users without email
+/// continue to receive the generic 200 response.
 #[utoipa::path(
     get,
     path = "/password-reset/{identifier}",
@@ -48,6 +47,7 @@ pub fn routes() -> OpenApiRouter<AppState> {
     ),
     responses(
         (status = 200, description = "Request processed", body = ()),
+        (status = 409, description = "A password reset link is already active", body = crate::api::error::ErrorResponse),
     ),
 )]
 async fn request_reset(State(state): State<AppState>, Path(identifier): Path<SmallString>) -> ApiResult<Json<()>> {
@@ -56,10 +56,29 @@ async fn request_reset(State(state): State<AppState>, Path(identifier): Path<Sma
     // enumerate users.
     state.config.smtp().ok_or(ApiError::MissingSmtpInfo)?;
 
+    // Check for an active token before spawning the sender. Lookup failures are
+    // deliberately ignored so unknown users, users without email, and database
+    // problems retain the generic response behavior.
+    if let Ok(mut conn) = state.connection_pool.get().await {
+        let active = diesel::select(diesel::dsl::exists(
+            user::table.filter(
+                user::name
+                    .eq(&identifier)
+                    .or(user::email.eq(&identifier))
+                    .and(user::email.is_not_null())
+                    .and(user::password_reset_token.is_not_null())
+                    .and(user::password_reset_expires.gt(DateTime::now())),
+            ),
+        ))
+        .get_result::<bool>(conn.as_mut());
+        if matches!(active, Ok(true)) {
+            return Err(ApiError::ResetAlreadyRequested);
+        }
+    }
+
     // Every identifier-dependent step (user lookup, token generation, the
     // database write and the email send) happens in a background task, so the
-    // response is an immediate, identical 200 regardless of whether the user
-    // exists, has an email, or already has a pending reset token.
+    // response is an immediate, generic 200 for all other identifiers.
     tokio::spawn(async move {
         if let Err(err) = send_reset_email(state, identifier).await {
             tracing::warn!("Password reset request failed: {err}");
@@ -436,6 +455,53 @@ mod test {
 
     #[tokio::test]
     #[serial]
+    async fn request_reset_returns_conflict_for_active_token() -> ApiResult<()> {
+        let mut app_state = get_state();
+        app_state.config = std::sync::Arc::new({
+            let mut config = config::test_config(Some("password_reset/request_for_nonexistent_user"));
+            config.smtp = Some(SmtpConfig {
+                host: SmallString::new("127.0.0.1"),
+                port: Some(1),
+                username: None,
+                password: None,
+                from: Mailbox::new(None, Address::from_str("noreply@example.com").expect("valid test address")),
+            });
+            config
+        });
+        let (router, _) = routes(app_state).split_for_parts();
+        let app = NormalizePathLayer::trim_trailing_slash().layer(router);
+        let server = TestServer::new(ServiceExt::<Request>::into_make_service(app))
+            .expect("Test server must be constructible");
+
+        let mut conn = get_connection()?;
+        let active_token = Some("active-reset-token".to_string());
+        let active_expires = Some(DateTime::from(
+            time::OffsetDateTime::now_utc() + time::Duration::hours(1),
+        ));
+        diesel::update(user::table.filter(user::name.eq("regular_user")))
+            .set((
+                user::password_reset_token.eq(active_token),
+                user::password_reset_expires.eq(active_expires),
+            ))
+            .execute(&mut conn)?;
+
+        let response = server.get("/password-reset/regular_user").await;
+        assert_eq!(response.status_code(), 409);
+        let body = response.json::<Value>();
+        assert_eq!(body["name"], "ResetAlreadyRequested");
+        assert_eq!(
+            body["description"],
+            "A password reset link is already active. Use the existing link or wait for it to expire."
+        );
+
+        diesel::update(user::table.filter(user::name.eq("regular_user")))
+            .set((user::password_reset_token.eq(None::<String>), user::password_reset_expires.eq(None::<DateTime>)))
+            .execute(&mut conn)?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn request_reset_cleans_token_after_smtp_failure_for_username_and_email() -> ApiResult<()> {
         let mut app_state = get_state();
         // Point SMTP at a port that fails immediately so the background task
@@ -522,8 +588,7 @@ mod test {
             ))
             .execute(&mut conn)?;
         let response = server.get("/password-reset/email@domain.com").await;
-        assert_eq!(response.status_code(), 200);
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert_eq!(response.status_code(), 409);
         let current_token: Option<String> = user::table
             .select(user::password_reset_token)
             .filter(user::email.eq("email@domain.com"))

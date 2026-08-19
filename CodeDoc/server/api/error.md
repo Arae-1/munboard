@@ -109,12 +109,14 @@ An exhaustive enum covering all possible API error conditions. Each variant has 
 | `QueryRejection` | (delegates to inner) | `axum::extract::rejection::QueryRejection` |
 | `QueryTooLong(ByteSize)` | `"Search query exceeds maximum length of {0}"` (`{0}` displays as a human-readable size) | Direct |
 | `Request` | (delegates to inner) | `reqwest::Error` |
+| `ResetAlreadyRequested` | `"A password reset link is already active. Use the existing link or wait for it to expire."` | Direct |
 | `ResourceModified` | `"Someone else modified this in the meantime. Please try again."` | Direct |
 | `SelfMerge(ResourceType)` | `"Cannot merge {0} with itself"` | Direct |
 | `StdIo` | (delegates to inner) | `std::io::Error` |
 | `TaskJoin` | (delegates to inner) | `tokio::task::JoinError` |
 | `UnauthorizedPasswordReset` | `"Password reset token is invalid"` | Direct |
 | `UnsupportedExtension` | (delegates to inner) | `crate::model::enums::ParseExtensionError` |
+
 
 ---
 
@@ -128,7 +130,7 @@ An exhaustive enum covering all possible API error conditions. Each variant has 
 | **401 UNAUTHORIZED** | `NotLoggedIn`, `Password`, `UnauthorizedPasswordReset`, plus `FailedAuthentication` non-connection/non-query variants |
 | **403 FORBIDDEN** | `Hidden`, `InsufficientPrivileges` |
 | **404 NOT FOUND** | `NotFound` |
-| **409 CONFLICT** | `AlreadyExists`, `ResourceModified` |
+| **409 CONFLICT** | `AlreadyExists`, `ResetAlreadyRequested`, `ResourceModified` |
 | **415 UNSUPPORTED MEDIA TYPE** | `UnsupportedExtension` |
 | **422 UNPROCESSABLE ENTITY** | `BlockedUrl`, `CyclicDependency`, `DeleteDefault`, `EmptyVideo`, `ExpressionFailsRegex`, `FfmpegError`, `FileTooLarge`, `FrameBufferMismatch`, `FromStr`, `Image`, `InvalidEmail`, `InvalidEmailAddress`, `InvalidSort`, `InvalidTime`, `InvalidUploadToken`, `InvalidUserRank`, `MetadataTooLarge`, `NegativeCustomFieldValue`, `NoNamesGiven`, `NotAnInteger`, `SelfMerge` |
 | **500 INTERNAL SERVER ERROR** | `FailedEmailTransport`, `FailedQuery`, `InvalidHeader`, `MissingSmtpInfo`, `StdIo`, `TaskJoin`, plus `JsonSerialization` with `Io`/`Eof` category, plus `FailedAuthentication::FailedQuery` |
@@ -146,6 +148,7 @@ Returns a human-readable category string for each error variant. Examples:
 - `AlreadyExists(_)` → `"Already Exists"`
 - `NotFound(_)` → `"Resource Not Found"`
 - `InsufficientPrivileges` → `"Insufficient Privileges"`
+- `ResetAlreadyRequested` → `"Reset Already Requested"`
 - `ResourceModified` → `"Resource Modified"`
 - `FileTooLarge(_)` → `"File Too Large"`
 - `MetadataTooLarge(_)` → `"Metadata Too Large"`

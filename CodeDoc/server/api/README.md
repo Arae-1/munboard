@@ -81,7 +81,7 @@ Applied outermost-first in [mod.md](mod.md):
 | 401 | `NotLoggedIn`, `Password`, `UnauthorizedPasswordReset`, authentication failures |
 | 403 | `Hidden`, `InsufficientPrivileges` |
 | 404 | `NotFound` |
-| 409 | `AlreadyExists`, `ResourceModified` |
+| 409 | `AlreadyExists`, `ResetAlreadyRequested`, `ResourceModified` |
 | 415 | `UnsupportedExtension` |
 | 422 | `BlockedUrl`, `CyclicDependency`, `DeleteDefault`, `FileTooLarge`, `ExpressionFailsRegex`, `InvalidSort`, `InvalidTime`, `NoNamesGiven`, `SelfMerge`, image/ffmpeg errors |
 | 500 | `FailedQuery`, `StdIo`, internal errors |

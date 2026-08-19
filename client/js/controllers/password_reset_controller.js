@@ -52,7 +52,7 @@ class PasswordResetFinishController {
             .then(
                 () => {
                     const ctx = router.show(uri.formatClientLink());
-                    ctx.controller.showSuccess("New password: " + password);
+                    ctx.controller.showPlainTextSuccess("New password: " + password);
                 },
                 (error) => {
                     const ctx = router.show(uri.formatClientLink());

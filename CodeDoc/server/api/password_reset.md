@@ -62,18 +62,12 @@ None.
 
 | Status | Body | Description |
 |--------|------|-------------|
-| 200 | Empty JSON `()` | Request processed (always, for security) |
+| 200 | Empty JSON `()` | Request processed for unknown users, users without email, SMTP failures, and new requests |
+| 409 | `ErrorResponse` | `ResetAlreadyRequested`: an active reset link already exists; use it or wait for expiry |
 
-The response is an immediate, identical 200. The code returns this status regardless of whether the user exists, has an email configured, or already has a pending reset token. This prevents user enumeration.
+The handler checks SMTP configuration first, then performs a best-effort database precheck for an active token matching the username or email. A matching non-null token whose expiry is in the future returns 409 before the email task is spawned. Lookup failures are ignored to preserve generic behavior. The background task retains an atomic token reservation so races still cannot overwrite an active token.
 
-### Handler Logic Step by Step
-
-1. Check `state.config.smtp()`. If SMTP is not configured, return `ApiError::MissingSmtpInfo`. This check is config-level and identical for every identifier, so it cannot be used to enumerate users.
-2. Spawn a background task with `tokio::spawn`. The task calls `send_reset_email(state, identifier)`.
-3. If the background task fails, log the error at `warn` level. The error never surfaces in the response.
-4. Return `Ok(Json(()))` immediately.
-
-Every identifier-dependent step (user lookup, token generation, the database write and the email send) happens in the background task.
+Unknown identifiers and users without email continue to receive the generic immediate 200 response. SMTP failures also remain asynchronous and do not surface as request errors.
 
 ---
 
@@ -87,7 +81,7 @@ This function performs the actual password-reset request work: it looks up the u
 
 A still-valid pending token is never overwritten and no duplicate email is sent. The no-overwrite guard and token insert share one transaction. PostgreSQL rechecks the WHERE clause of a waiting UPDATE against the committed row. Only the first insert matches; the second skips the email. SMTP and task failures are logged and do not surface in the response.
 
-### Handler Logic Step by Step
+### Background Task Logic Step by Step
 
 1. Extract SMTP information from `state.config.smtp()`. If SMTP is not configured, return `ApiError::MissingSmtpInfo`.
 2. Get a database connection from the pool.

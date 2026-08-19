@@ -47,6 +47,10 @@ class HomeView {
         views.showError(this._hostNode, text);
     }
 
+    showPlainTextSuccess(text) {
+        views.showPlainTextSuccess(this._hostNode, text);
+    }
+
     setStats(stats) {
         views.replaceContent(
             this._footerContainerNode,

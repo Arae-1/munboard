@@ -163,6 +163,14 @@ Appends a styled message to the `.messages` container inside `target`:
 - The message text goes through innerHTML after newlines are converted to `<br/>`.
 - Returns `true` if successful, `false` if no `.messages` container found.
 
+### `showPlainTextMessage(target, message, className)`
+
+Appends a styled message like `showMessage`, but assigns `message` through the node's `textContent`. It does not parse HTML or Markdown and is intended for sensitive generated values that must be displayed literally.
+
+### `showPlainTextSuccess(target, message)`
+
+Calls `showPlainTextMessage` with `className = "success"`.
+
 ### `appendExclamationMark()`
 
 Prepends `"! "` to `document.title` if it does not already start with `!`. Stores the old title in `document.oldTitle`.
