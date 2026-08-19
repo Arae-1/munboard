@@ -70,14 +70,15 @@ async fn request_reset(State(state): State<AppState>, Path(identifier): Path<Sma
 }
 
 /// Performs the actual password-reset request work in the background: looks up
-/// the user, stores a fresh reset token and sends the confirmation email.
+/// the user, builds the confirmation email, conditionally reserves a fresh
+/// reset token and sends the confirmation email.
 ///
 /// A still-valid pending token is never overwritten and no duplicate email is
 /// sent. The no-overwrite guard and the token insert share one transaction, so
 /// two rapid requests cannot both win: PostgreSQL rechecks the WHERE clause of
 /// a waiting UPDATE against the committed row, only the first insert matches,
-/// and the second skips the email. Errors are logged by the caller and never
-/// surface in the response.
+/// and the second skips the email. SMTP failures clear this request's token
+/// reservation and are logged without surfacing in the response.
 async fn send_reset_email(state: AppState, identifier: SmallString) -> ApiResult<()> {
     let smtp_info = state.config.smtp().ok_or(ApiError::MissingSmtpInfo)?;
 
@@ -121,6 +122,32 @@ async fn send_reset_email(state: AppState, identifier: SmallString) -> ApiResult
     // leak cannot yield live reset links.
     let stored_token_hash = header::hash_token_hex(reset_token.as_bytes());
 
+    let site_name = &state.config.public_info.name;
+    let username_encoded = percent_encoding::utf8_percent_encode(&username, NON_ALPHANUMERIC);
+    let separator = percent_encoding::percent_encode_byte(b':');
+    let url = format!("{domain}/password-reset/{username_encoded}{separator}{reset_token}");
+
+    // Build the message before reserving the token. A malformed message must
+    // not leave a token that prevents a later request from trying again.
+    let email = match Message::builder()
+        .from(smtp_info.from.clone())
+        .to(user_mailbox.clone())
+        .subject(format!("Password reset for {site_name}"))
+        .header(ContentType::TEXT_HTML)
+        .body(format!(
+            "<html>
+                <body>
+                    <p>Hello,</p>
+                    <p>You (or someone else) requested to reset your password on {site_name}.<br>
+                    If you wish to proceed, click this link: <a href=\"{url}\">{url}</a></p>
+                    <p>Otherwise, please ignore this email.</p>
+                </body>
+            </html>"
+        )) {
+        Ok(email) => email,
+        Err(_) => return Ok(()),
+    };
+
     let inserted = state
         .connection_pool
         .transaction({
@@ -146,57 +173,53 @@ async fn send_reset_email(state: AppState, identifier: SmallString) -> ApiResult
         return Ok(());
     }
 
-    let site_name = &state.config.public_info.name;
-    let username_encoded = percent_encoding::utf8_percent_encode(&username, NON_ALPHANUMERIC);
-    let separator = percent_encoding::percent_encode_byte(b':');
-    let url = format!("{domain}/password-reset/{username_encoded}{separator}{reset_token}");
-
-    let email = match Message::builder()
-        .from(smtp_info.from.clone())
-        .to(user_mailbox.clone())
-        .subject(format!("Password reset for {site_name}"))
-        .header(ContentType::TEXT_HTML)
-        .body(format!(
-            "<html>
-                <body>
-                    <p>Hello,</p>
-                    <p>You (or someone else) requested to reset your password on {site_name}.<br>
-                    If you wish to proceed, click this link: <a href=\"{url}\">{url}</a></p>
-                    <p>Otherwise, please ignore this email.</p>
-                </body>
-            </html>"
-        )) {
-        Ok(email) => email,
-        Err(_) => return Ok(()),
-    };
-
-    // Send the email in a blocking task; a relay or send failure must not
-    // affect the already-sent response. The token is stored in the database
-    // before the send, so a failed delivery can simply be retried.
     let smtp_host = smtp_info.host.clone();
     let smtp_username = smtp_info.username.clone();
     let smtp_password = smtp_info.password.clone();
     let smtp_port = smtp_info.port;
-    let _ = tokio::task::spawn_blocking(move || {
-        let mut smtp_builder = match SmtpTransport::relay(&smtp_host) {
-            Ok(builder) => builder,
-            Err(err) => {
-                tracing::warn!("Unable to build SMTP transport for password reset email: {err}");
-                return;
-            }
-        };
+    let smtp_result = tokio::task::spawn_blocking(move || {
+        let mut smtp_builder = SmtpTransport::relay(&smtp_host)
+            .map_err(|err| format!("Unable to build SMTP transport for password reset email: {err}"))?;
         if let (Some(username), Some(password)) = (smtp_username.as_ref(), smtp_password.as_ref()) {
             smtp_builder = smtp_builder.credentials(Credentials::new(username.to_string(), password.to_string()));
         }
         if let Some(port) = smtp_port {
             smtp_builder = smtp_builder.port(port);
         }
-        let mailer = smtp_builder.build();
+        smtp_builder
+            .build()
+            .send(&email)
+            .map_err(|err| format!("Unable to send password reset email: {err}"))?;
+        Ok::<(), String>(())
+    })
+    .await;
 
-        if let Err(err) = mailer.send(&email) {
-            tracing::warn!("Unable to send password reset email: {err}");
-        }
-    });
+    let smtp_error = match smtp_result {
+        Ok(Ok(())) => None,
+        Ok(Err(err)) => Some(err),
+        Err(err) => Some(format!("Password reset SMTP task failed: {err}")),
+    };
+    if let Some(err) = smtp_error {
+        tracing::warn!("Password reset email delivery failed: {err}");
+
+        // Clear only the reservation made by this request. Matching both the
+        // hash and expiry prevents a failed send from clearing a newer token.
+        state
+            .connection_pool
+            .transaction({
+                let stored_token_hash = stored_token_hash.clone();
+                move |conn| {
+                    diesel::update(user::table.filter(
+                        user::id.eq(user_id)
+                            .and(user::password_reset_token.eq(&stored_token_hash))
+                            .and(user::password_reset_expires.eq(expires)),
+                    ))
+                    .set((user::password_reset_token.eq(None::<String>), user::password_reset_expires.eq(None::<DateTime>)))
+                    .execute(conn)
+                }
+            })
+            .await?;
+    }
 
     Ok(())
 }
@@ -413,10 +436,10 @@ mod test {
 
     #[tokio::test]
     #[serial]
-    async fn request_reset_writes_token_in_background_for_username_and_email() -> ApiResult<()> {
+    async fn request_reset_cleans_token_after_smtp_failure_for_username_and_email() -> ApiResult<()> {
         let mut app_state = get_state();
-        // Point SMTP at a port that fails immediately: the test only observes
-        // the database write, never the email delivery.
+        // Point SMTP at a port that fails immediately so the background task
+        // deterministically exercises failure cleanup.
         app_state.config = std::sync::Arc::new({
             let mut config = config::test_config(Some("password_reset/request_for_nonexistent_user"));
             config.smtp = Some(SmtpConfig {
@@ -433,55 +456,71 @@ mod test {
         let server = TestServer::new(ServiceExt::<Request>::into_make_service(app))
             .expect("Test server must be constructible");
 
-        // Preserve coverage for username lookup as well as the email path.
-        {
-            let mut conn = get_connection()?;
-            diesel::update(user::table.filter(user::email.eq("email@domain.com")))
-                .set((user::password_reset_token.eq(None::<String>), user::password_reset_expires.eq(None::<DateTime>)))
-                .execute(&mut conn)?;
-            let response = server.get("/password-reset/regular_user").await;
-            assert_eq!(response.status_code(), 200);
-            assert_eq!(response.json::<Value>(), Value::Null);
-
-            let mut username_token = None;
-            for _ in 0..200 {
-                username_token = user::table
-                    .select(user::password_reset_token)
-                    .filter(user::email.eq("email@domain.com"))
-                    .first::<Option<String>>(&mut conn)?;
-                if username_token.is_some() {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-            }
-            assert!(username_token.is_some(), "username reset token was not written by the background task");
-        }
-        // Resolve the account by email, not username.
         let mut conn = get_connection()?;
+        let expired = Some(DateTime::from(time::OffsetDateTime::now_utc() - time::Duration::hours(1)));
+
+        // Preserve coverage for username lookup and verify that a failed send
+        // removes the reservation made by that background task.
         diesel::update(user::table.filter(user::email.eq("email@domain.com")))
-            .set((user::password_reset_token.eq(None::<String>), user::password_reset_expires.eq(None::<DateTime>)))
+            .set((
+                user::password_reset_token.eq(Some("stale-username-token".to_string())),
+                user::password_reset_expires.eq(expired),
+            ))
+            .execute(&mut conn)?;
+        let response = server.get("/password-reset/regular_user").await;
+        assert_eq!(response.status_code(), 200);
+        assert_eq!(response.json::<Value>(), Value::Null);
+
+        let mut username_token = Some(String::new());
+        for _ in 0..200 {
+            username_token = user::table
+                .select(user::password_reset_token)
+                .filter(user::email.eq("email@domain.com"))
+                .first::<Option<String>>(&mut conn)?;
+            if username_token.is_none() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+        assert!(username_token.is_none(), "failed SMTP send left a username reset token");
+
+        // Resolve the account by email, not username, and verify cleanup on
+        // the email lookup path too.
+        diesel::update(user::table.filter(user::email.eq("email@domain.com")))
+            .set((
+                user::password_reset_token.eq(Some("stale-email-token".to_string())),
+                user::password_reset_expires.eq(expired),
+            ))
             .execute(&mut conn)?;
         let response = server.get("/password-reset/email@domain.com").await;
         assert_eq!(response.status_code(), 200);
         assert_eq!(response.json::<Value>(), Value::Null);
 
-        // The token is written asynchronously, so poll briefly for it
-        // (L-08 regression test).
-        let mut pending_token = None;
+        let mut email_token = Some(String::new());
         for _ in 0..200 {
-            pending_token = user::table
+            email_token = user::table
                 .select(user::password_reset_token)
                 .filter(user::email.eq("email@domain.com"))
                 .first::<Option<String>>(&mut conn)?;
-            if pending_token.is_some() {
+            if email_token.is_none() {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(25)).await;
         }
-        let pending_token = pending_token.expect("reset token was not written by the background task");
+        assert!(email_token.is_none(), "failed SMTP send left an email reset token");
 
         // A still-valid token must not be replaced by a later request, which
         // also prevents sending a second reset email for the same token.
+        let valid_token = "valid-reset-token".to_string();
+        let valid_expires = Some(DateTime::from(
+            time::OffsetDateTime::now_utc() + time::Duration::hours(1),
+        ));
+        diesel::update(user::table.filter(user::email.eq("email@domain.com")))
+            .set((
+                user::password_reset_token.eq(Some(valid_token.clone())),
+                user::password_reset_expires.eq(valid_expires),
+            ))
+            .execute(&mut conn)?;
         let response = server.get("/password-reset/email@domain.com").await;
         assert_eq!(response.status_code(), 200);
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -489,7 +528,7 @@ mod test {
             .select(user::password_reset_token)
             .filter(user::email.eq("email@domain.com"))
             .first(&mut conn)?;
-        assert_eq!(current_token.as_deref(), Some(pending_token.as_str()));
+        assert_eq!(current_token.as_deref(), Some(valid_token.as_str()));
 
         // Keep the shared test database reusable for other tests.
         diesel::update(user::table.filter(user::email.eq("email@domain.com")))

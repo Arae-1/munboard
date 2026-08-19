@@ -83,9 +83,9 @@ Every identifier-dependent step (user lookup, token generation, the database wri
 async fn send_reset_email(state: AppState, identifier: SmallString) -> ApiResult<()>
 ```
 
-This function performs the actual password-reset request work: it looks up the user, stores a fresh reset token, and sends the confirmation email.
+This function performs the actual password-reset request work: it looks up the user, builds the confirmation email, conditionally reserves a fresh reset token, and sends the email.
 
-A still-valid pending token is never overwritten and no duplicate email is sent. The no-overwrite guard and the token insert share one transaction. PostgreSQL rechecks the WHERE clause of a waiting UPDATE against the committed row. Only the first insert matches; the second skips the email. Errors are logged by the caller and never surface in the response.
+A still-valid pending token is never overwritten and no duplicate email is sent. The no-overwrite guard and token insert share one transaction. PostgreSQL rechecks the WHERE clause of a waiting UPDATE against the committed row. Only the first insert matches; the second skips the email. SMTP and task failures are logged and do not surface in the response.
 
 ### Handler Logic Step by Step
 
@@ -108,27 +108,26 @@ A still-valid pending token is never overwritten and no duplicate email is sent.
 11. Compute a URL-safe hash of those bytes via `hash::compute_url_safe_hash`. This becomes the `reset_token`.
 12. Calculate the expiry time: 1 hour from now.
 13. Store only the hash of the token with `header::hash_token_hex(reset_token.as_bytes())`. The database never stores the token itself, so a database leak cannot yield live reset links.
-14. Run a conditional UPDATE in one transaction. The UPDATE targets the user row where `id = user_id` and the pending token is absent or expired:
-    - Condition: `password_reset_token IS NULL` OR `password_reset_expires < now`.
-    - Set: `password_reset_token` = stored token hash, `password_reset_expires` = expiry time.
-15. If the UPDATE matched 0 rows, a still-valid pending token already exists. Do not overwrite it and do not send another email. Return `Ok(())`.
-16. Build the reset URL: `{domain}/password-reset/{username_encoded}{separator}{reset_token}`. The username and a colon separator are percent-encoded.
-17. Build an HTML email message with the reset link:
+14. Build the reset URL: `{domain}/password-reset/{username_encoded}{separator}{reset_token}`. The username and a colon separator are percent-encoded.
+15. Build an HTML email message with the reset link:
     - From: `smtp_info.from`
     - To: `user_mailbox`
     - Subject: `Password reset for {site_name}`
     - Body: Contains the reset link in an HTML anchor tag.
-18. If the email message fails to build, return `Ok(())`.
-19. Send the email in a blocking task (`tokio::task::spawn_blocking`):
-    a. Build an SMTP transport:
-       - Relay through `smtp_info.host`.
-       - If username and password are configured, add SMTP credentials.
-       - If port is configured, set the port.
-    b. Send the email via the SMTP transport.
-    c. If the transport cannot be built or the send fails, log the error at `warn` level.
-20. Return `Ok(())`.
+16. If the email message fails to build, return `Ok(())` without reserving a token.
+17. Run a conditional UPDATE in one transaction. The UPDATE targets the user row where `id = user_id` and the pending token is absent or expired:
+    - Condition: `password_reset_token IS NULL` OR `password_reset_expires < now`.
+    - Set: `password_reset_token` = stored token hash, `password_reset_expires` = expiry time.
+18. If the UPDATE matched 0 rows, a still-valid pending token already exists. Do not overwrite it and do not send another email. Return `Ok(())`.
+19. Send the email in an awaited blocking task (`tokio::task::spawn_blocking`):
+    a. Build an SMTP transport by relaying through `smtp_info.host`.
+    b. If username and password are configured, add SMTP credentials.
+    c. If a port is configured, set the port.
+    d. Send the email via the SMTP transport.
+20. If SMTP transport construction, sending, or blocking-task execution fails, log the failure at `warn` level. Conditionally clear `password_reset_token` and `password_reset_expires` only when both still equal the hash and expiry reserved by this request, so a newer token is never cleared.
+21. Return `Ok(())`.
 
-The token is stored in the database before the send. A failed delivery can simply be retried, and a relay or send failure does not affect the already-sent response.
+The email is built before the token is stored. A failed delivery clears this request's reservation, allowing a later request to retry, while a still-valid token remains protected from replacement.
 
 ---
 
@@ -209,4 +208,4 @@ Generates a random string of printable ASCII characters from `'!'` (0x21) to `'~
 |---------------|--------|-------------|
 | `error` | parallel | Tests requesting reset for nonexistent user, confirming for nonexistent user, no email case, invalid email case, reset disabled (no SMTP), invalid token, and missing token (no token body) |
 | `reset_password_revokes_api_tokens` | serial | Seeds a pending reset token and an API token, confirms the reset through the API, and asserts the API token is revoked |
-| `request_reset_writes_token_in_background` | serial | Points SMTP at a failing port, asserts the immediate 200 with a null body, and polls the database until the background task writes the token hash |
+| `request_reset_cleans_token_after_smtp_failure_for_username_and_email` | serial | Points SMTP at a failing port, asserts the immediate 200 with a null body, and polls the database until failed background sends clear their reservations for both username and email lookup; also verifies a valid token is not replaced |
