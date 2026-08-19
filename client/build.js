@@ -75,6 +75,14 @@ function gzipFile(file) {
 function baseUrl() {
     return process.env.BASE_URL ? process.env.BASE_URL : '/';
 }
+const assetVersion = Date.now().toString(36);
+
+function addAssetVersion(html) {
+    return html.replace(
+        /(src=['"]js\/(?:vendor|app)\.min\.js)(['"])/g,
+        `$1?v=${assetVersion}$2`);
+}
+
 
 // -------------------------------------------------
 
@@ -90,8 +98,9 @@ function bundleHtml() {
         }).trim();
     }
 
-    const baseHtml = readTextFile('./html/index.htm')
-        .replace('<!-- Base HTML Placeholder -->', `<base href="${baseUrl()}"/>`);
+    const baseHtml = addAssetVersion(
+        readTextFile('./html/index.htm')
+            .replace('<!-- Base HTML Placeholder -->', `<base href="${baseUrl()}"/>`));
     fs.writeFileSync('./public/index.htm', minifyHtml(baseHtml));
 
     let compiledTemplateJs = [
