@@ -30,7 +30,6 @@
                 font-size: 80%
                 color: white
                 outline-offset: -3px
-                box-shadow: 0 0 0 1px rgba(0,0,0,0.2)
 
                 .type, .stats
                     position: absolute
@@ -142,6 +141,8 @@
                 width: 100%
                 height: 100%
                 outline-offset: -3px
+                box-sizing: border-box
+                border: 1px solid $line-color
                 &:not(.empty)
                     background-position: 50% 30%
 
@@ -276,3 +277,7 @@
             border-color: @background-color
             &.disabled
                 background-color: alpha(@background-color, 0.15)
+
+.darktheme .post-list
+    .thumbnail
+        border-color: $line-color-darktheme

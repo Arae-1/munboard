@@ -108,6 +108,7 @@ form .fa-question-circle-o
                     background-color: $scrollbar-thumb-color
     >.content-wrapper:not(.transparent-container)
         background: $top-navigation-color
+        border: 1px solid $line-color
         padding: 1.8em
         @media (max-width: 1000px)
             padding: 1.5em
@@ -119,6 +120,7 @@ form .fa-question-circle-o
 .darktheme #content-holder
     >.content-wrapper:not(.transparent-container)
         background: $top-navigation-color-darktheme
+        border: 1px solid $line-color-darktheme
 
 blockquote
     border-left: 3px solid $line-color
@@ -170,6 +172,7 @@ nav
                 display: inline-block
             li a
                 padding: 0 1.2em
+                border-bottom: 2px solid transparent
             li:not(.active) a
                 color: $inactive-tab-text-color
             li:hover:not(.active) a
@@ -177,12 +180,14 @@ nav
             li.active a
                 background: $active-tab-background-color
                 color: $active-tab-text-color
+                border-bottom-color: $main-color
             :focus
                 background: $focused-tab-background-color
                 outline: 0
 
     &#top-navigation
         background: $top-navigation-color
+        border-bottom: 1px solid $line-color
         margin: 0
         ul
             display: block
@@ -252,10 +257,12 @@ nav
             li.active a
                 background: $active-tab-background-color-darktheme
                 color: $active-tab-text-color-darktheme
+                border-bottom-color: $main-color
             :focus
                 background: $focused-tab-background-color-darktheme
     &#top-navigation
         background: $top-navigation-color-darktheme
+        border-bottom: 1px solid $line-color-darktheme
         ul
             #mobile-navigation-toggle
                 color: $text-color-darktheme
