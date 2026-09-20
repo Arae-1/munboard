@@ -5,6 +5,7 @@ const api = require("../api.js");
 const misc = require("../util/misc.js");
 const views = require("../util/views.js");
 const Post = require("../models/post.js");
+const PoolChildrenInputControl = require("../controls/pool_children_input_control.js");
 
 const template = views.getTemplate("pool-edit");
 
@@ -28,6 +29,10 @@ class PoolEditView extends events.EventTarget {
             this._postsFieldNode.addEventListener("input", (e) =>
                 this._evtPostsInput(e)
             );
+        }
+        if (this._childrenFieldNode) {
+            this._childrenControl = new PoolChildrenInputControl(this._childrenFieldNode, this._pool);
+            this._childrenControl.addEventListener("change", () => this.dispatchEvent(new CustomEvent("change")));
         }
 
         for (let node of this._formNode.querySelectorAll(
@@ -102,6 +107,9 @@ class PoolEditView extends events.EventTarget {
 
     _evtSubmit(e) {
         e.preventDefault();
+        if (this._childrenControl && !this._childrenControl.reportValidity()) {
+            return;
+        }
         this.dispatchEvent(
             new CustomEvent("submit", {
                 detail: {
@@ -122,6 +130,8 @@ class PoolEditView extends events.EventTarget {
                     posts: this._postsFieldNode
                         ? misc.splitByWhitespace(this._postsFieldNode.value)
                         : undefined,
+
+                    children: this._childrenControl ? this._childrenControl.getIds() : undefined,
 
                     launchDate: this._launchDateFieldNode
                         ? misc.dateToRfc3339(this._launchDateFieldNode.value)
@@ -153,6 +163,10 @@ class PoolEditView extends events.EventTarget {
 
     get _launchDateFieldNode() {
         return this._formNode.querySelector(".launch-date input");
+    }
+
+    get _childrenFieldNode() {
+        return this._formNode.querySelector(".children input");
     }
 }
 

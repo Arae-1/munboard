@@ -102,15 +102,18 @@ class PoolController {
             e.detail.pool.description = e.detail.description;
         }
         if (e.detail.posts !== undefined && e.detail.posts !== null) {
-            e.detail.pool.posts.clear();
+            e.detail.pool.directPosts.clear();
             for (let postId of e.detail.posts) {
-                e.detail.pool.posts.add(
+                e.detail.pool.directPosts.add(
                     Post.fromResponse({ id: parseInt(postId) })
                 );
             }
         }
         if (e.detail.launchDate !== undefined) {
             e.detail.pool.launchDate = e.detail.launchDate;
+        }
+        if (e.detail.children !== undefined) {
+            e.detail.pool.children = e.detail.children;
         }
         e.detail.pool.save().then(
             () => {

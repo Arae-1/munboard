@@ -14,6 +14,8 @@ class Pool extends events.EventTarget {
 
         for (let obj of [this, this._orig]) {
             obj._posts = new PostList();
+            obj._directPosts = new PostList();
+            obj._children = [];
         }
 
         this._updateFromResponse({});
@@ -51,6 +53,32 @@ class Pool extends events.EventTarget {
         return this._postCount;
     }
 
+    get directPosts() {
+        return this._directPosts;
+    }
+
+    get parent() {
+        return this._parent;
+    }
+
+    set parent(value) {
+        this._parent = value;
+    }
+
+    get ancestors() {
+        return this._ancestors || [];
+    }
+
+    get children() {
+        return this._children;
+    }
+
+    set children(value) {
+        this._children = value.map((id) =>
+            this._children.find((child) => child.id === id) || { id: id }
+        );
+    }
+
     get creationTime() {
         return this._creationTime;
     }
@@ -85,8 +113,12 @@ class Pool extends events.EventTarget {
         return ret;
     }
 
-    static get(id) {
-        return api.get(uri.formatApiLink("pool", id)).then((response) => {
+    static get(id, fields) {
+        const args = ["pool", id];
+        if (fields) {
+            args.push({ fields: fields.join(",") });
+        }
+        return api.get(uri.formatApiLink(...args)).then((response) => {
             return Promise.resolve(Pool.fromResponse(response));
         });
     }
@@ -104,8 +136,14 @@ class Pool extends events.EventTarget {
         if (this._description !== this._orig._description) {
             detail.description = this._description;
         }
-        if (misc.arraysDiffer(this._posts, this._orig._posts)) {
-            detail.posts = this._posts.map((post) => post.id);
+        if (misc.arraysDiffer(this._directPosts, this._orig._directPosts)) {
+            detail.posts = this._directPosts.map((post) => post.id);
+        }
+        if ((this._parent && this._parent.id) !== (this._orig._parent && this._orig._parent.id)) {
+            detail.parent = this._parent ? this._parent.id : null;
+        }
+        if (misc.arraysDiffer(this._children.map((child) => child.id), this._orig._children.map((child) => child.id))) {
+            detail.children = this._children.map((child) => child.id);
         }
         if (this._launchDate !== this._orig._launchDate) {
             detail.launchDate = this._launchDate;
@@ -180,10 +218,14 @@ class Pool extends events.EventTarget {
             _lastEditTime: response.lastEditTime,
             _launchDate: response.launchDate,
             _postCount: response.postCount || 0,
+            _parent: response.parent || null,
+            _ancestors: response.ancestors || [],
         };
 
         for (let obj of [this, this._orig]) {
             obj._posts.sync(response.posts);
+            obj._directPosts.sync(response.directPosts || response.posts);
+            obj._children = [...(response.children || [])];
         }
 
         Object.assign(this, map);

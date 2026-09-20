@@ -42,8 +42,17 @@
                     <%= ctx.makeTextInput({
                         text: 'Posts',
                         placeholder: 'space-separated post IDs',
-                        value: ctx.pool.posts.map(post => post.id).join(' ')
+                        value: ctx.pool.directPosts.map(post => post.id).join(' ')
                     }) %>
+                <% } %>
+            </li>
+            <li class='children'>
+                <% if (ctx.canEditPosts) { %>
+                    <%= ctx.makeTextInput({
+                        text: 'Child pools',
+                        placeholder: 'type to add a child pool…'
+                    }) %>
+                    <p class='hint' id='child-pools-hint'>Select a suggested pool. Use the arrows to set the child order.</p>
                 <% } %>
             </li>
         </ul>

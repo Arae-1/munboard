@@ -42,7 +42,7 @@ ul.compact-pools
         padding-right: 0.4em
 
 div.pool-input, ul.compact-pools
-    .pool-usages, .pool-weight, .remove-pool
+    .pool-usages, .pool-weight, .remove-pool, .move-up, .move-down
         color: $inactive-link-color
         unselectable()
     .pool-usages, .pool-weight
@@ -51,8 +51,13 @@ div.pool-input, ul.compact-pools
         margin-left: 0.7em
     .remove-pool
         margin-right: 0.5em
+    .move-up, .move-down
+        margin-right: 0.3em
+        text-decoration: none
+    li:first-child .move-up, li:last-child .move-down
+        visibility: hidden
 
 .darktheme
     div.pool-input, ul.compact-pools
-        .pool-usages, .pool-weight, .remove-pool
+        .pool-usages, .pool-weight, .remove-pool, .move-up, .move-down
             color: $inactive-link-color-darktheme

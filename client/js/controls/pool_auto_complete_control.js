@@ -45,10 +45,13 @@ class PoolAutoCompleteControl extends AutoCompleteControl {
                     "version",
                 ],
                 { noProgress: true }).then(
-                    (response) =>
-                        resolve(
-                            _poolListToMatches(text, response.results, this._options)
-                        ),
+                    (response) => {
+                        let pools = response.results;
+                        if (this._options.filterPool) {
+                            pools = pools.filter((pool) => !this._options.filterPool(pool));
+                        }
+                        resolve(_poolListToMatches(text, pools, this._options));
+                    },
                     reject
                 );
             });

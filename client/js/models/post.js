@@ -11,6 +11,19 @@ const PoolList = require("./pool_list.js");
 const Pool = require("./pool.js");
 const misc = require("../util/misc.js");
 
+const poolSaveFields = [
+    "id",
+    "version",
+    "names",
+    "category",
+    "description",
+    "posts",
+    "directPosts",
+    "parent",
+    "children",
+    "launchDate",
+];
+
 class Post extends events.EventTarget {
     constructor() {
         super();
@@ -246,9 +259,9 @@ class Post extends events.EventTarget {
 
         // update each pool's list of posts
         for (let pool of added) {
-            let op = Pool.get(pool.id).then((response) => {
-                if (!response.posts.hasPostId(this._id)) {
-                    response.posts.addById(this._id);
+            let op = Pool.get(pool.id, poolSaveFields).then((response) => {
+                if (!response.directPosts.hasPostId(this._id)) {
+                    response.directPosts.addById(this._id);
                     return response.save();
                 } else {
                     return Promise.resolve(response);
@@ -258,9 +271,9 @@ class Post extends events.EventTarget {
         }
 
         for (let pool of removed) {
-            let op = Pool.get(pool.id).then((response) => {
-                if (response.posts.hasPostId(this._id)) {
-                    response.posts.removeById(this._id);
+            let op = Pool.get(pool.id, poolSaveFields).then((response) => {
+                if (response.directPosts.hasPostId(this._id)) {
+                    response.directPosts.removeById(this._id);
                     return response.save();
                 } else {
                     return Promise.resolve(response);
