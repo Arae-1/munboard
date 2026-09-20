@@ -484,6 +484,7 @@ function getTemplate(templatePath) {
             makeAccessKey: makeAccessKey,
             makeElement: makeElement,
             makeCssName: misc.makeCssName,
+            getPrettyName: misc.getPrettyName,
             makeNumericInput: makeNumericInput,
             formatClientLink: uri.formatClientLink,
             escapeTagName: uri.escapeTagName,
