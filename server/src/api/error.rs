@@ -119,6 +119,8 @@ pub enum ApiError {
     ResourceModified,
     #[error("Cannot merge {0} with itself")]
     SelfMerge(ResourceType),
+    #[error("Detach or rehome this pool before this operation")]
+    PoolHasRelationships,
     StdIo(#[from] std::io::Error),
     TaskJoin(#[from] tokio::task::JoinError),
     #[error("A password reset link is already active. Use the existing link or wait for it to expire.")]
@@ -174,7 +176,8 @@ impl ApiError {
             | Self::NegativeCustomFieldValue(_)
             | Self::NoNamesGiven(_)
             | Self::NotAnInteger(_)
-            | Self::SelfMerge(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            | Self::SelfMerge(_)
+            | Self::PoolHasRelationships => StatusCode::UNPROCESSABLE_ENTITY,
             Self::FailedEmailTransport(_)
             | Self::FailedQuery(_)
             | Self::InvalidHeader(_)
@@ -246,6 +249,7 @@ impl ApiError {
             Self::Request(_) => "Request Error",
             Self::ResourceModified => "Resource Modified",
             Self::SelfMerge(_) => "Self Merge",
+            Self::PoolHasRelationships => "Pool Has Relationships",
             Self::StdIo(_) => "IO Error",
             Self::TaskJoin(_) => "Task Join Error",
             Self::ResetAlreadyRequested => "Reset Already Requested",
@@ -339,6 +343,20 @@ pub fn map_unique_or_foreign_key_violation<T>(
         }
         Err(DeiselError::DatabaseError(DatabaseErrorKind::ForeignKeyViolation, _)) => {
             Err(ApiError::NotFound(foreign_resource))
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+/// Maps the pool-tree trigger constraint to a client-visible cycle error.
+pub fn map_pool_tree_violation<T>(result: QueryResult<T>) -> ApiResult<T> {
+    use diesel::result::DatabaseErrorKind;
+    use diesel::result::Error as DeiselError;
+
+    match result {
+        Ok(value) => Ok(value),
+        Err(DeiselError::DatabaseError(DatabaseErrorKind::CheckViolation, _)) => {
+            Err(ApiError::CyclicDependency(ResourceType::Pool))
         }
         Err(err) => Err(err.into()),
     }

@@ -1,6 +1,6 @@
 use crate::model::pool_category::PoolCategory;
 use crate::model::post::Post;
-use crate::schema::{pool, pool_name, pool_post};
+use crate::schema::{pool, pool_name, pool_post, pool_subpool};
 use crate::string::{LargeString, SmallString};
 use crate::time::DateTime;
 use diesel::dsl::sql;
@@ -70,5 +70,16 @@ impl PoolName {
 pub struct PoolPost {
     pub pool_id: i64,
     pub post_id: i64,
+    pub order: i64,
+}
+
+#[derive(Associations, Identifiable, Insertable, Queryable, Selectable)]
+#[diesel(belongs_to(Pool, foreign_key = parent_id))]
+#[diesel(table_name = pool_subpool)]
+#[diesel(primary_key(parent_id, child_id))]
+#[diesel(check_for_backend(Pg))]
+pub struct PoolSubpool {
+    pub parent_id: i64,
+    pub child_id: i64,
     pub order: i64,
 }

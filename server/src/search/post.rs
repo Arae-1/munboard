@@ -19,7 +19,7 @@ use diesel::dsl::{Eq, InnerJoin, InnerJoinOn, IntoBoxed, LeftJoin, Select, count
 use diesel::expression::{SqlLiteral, UncheckedBind};
 use diesel::pg::Pg;
 use diesel::sql_types::{Float, SmallInt};
-use diesel::{ExpressionMethods, JoinOnDsl, PgConnection, QueryDsl, QueryResult, RunQueryDsl, TextExpressionMethods};
+use diesel::{ExpressionMethods, JoinOnDsl, PgConnection, QueryDsl, QueryResult, QueryableByName, RunQueryDsl, TextExpressionMethods};
 use std::str::FromStr;
 use strum::{Display, EnumIter, EnumString, EnumTable, IntoStaticStr};
 
@@ -75,6 +75,7 @@ pub enum Token {
     Tag,
     TagCategory,
     Pool,
+    PoolTree,
     PoolCategory,
     #[strum(serialize = "submit", serialize = "upload", serialize = "uploader")]
     Uploader,
@@ -159,6 +160,7 @@ impl<'a> Builder<'a> for QueryBuilder<'a> {
                 Token::Tag => apply_tag_filter(conn, query, nonmatching, filter, state),
                 Token::TagCategory => apply_tag_category_filter(conn, query, filter, state),
                 Token::Pool => apply_pool_filter(conn, query, filter, state),
+                Token::PoolTree => apply_pool_tree_filter(conn, query, filter, state),
                 Token::PoolCategory => apply_pool_category_filter(conn, query, filter, state),
                 Token::Uploader => Ok(apply_str_filter!(query, user::name, filter)),
                 Token::Fav => apply_favorite_filter(conn, query, filter, state),
@@ -215,7 +217,7 @@ impl<'a> Builder<'a> for QueryBuilder<'a> {
             Token::LaunchDate => apply_sort!(query, inherited_launch_date(), sort),
             Token::MediaCreatedDate => apply_sort!(query, post::media_created_date, sort),
             Token::Tag | Token::TagCount => apply_sort!(query, post_statistics::tag_count, sort),
-            Token::Pool | Token::PoolCount => apply_sort!(query, post_statistics::pool_count, sort),
+            Token::Pool | Token::PoolTree | Token::PoolCount => apply_sort!(query, post_statistics::pool_count, sort),
             Token::Uploader => apply_sort!(query, user::name, sort),
             Token::Fav | Token::FavCount => apply_sort!(query, post_statistics::favorite_count, sort),
             Token::Comment | Token::CommentCount => apply_sort!(query, post_statistics::comment_count, sort),
@@ -378,6 +380,48 @@ fn apply_pool_filter(
     filter: UnparsedFilter<Token>,
     state: &mut CacheState,
 ) -> ApiResult<BoxedQuery> {
+    apply_pool_filter_for_ids(conn, query, filter, state, None)
+}
+
+/// Applies `pool-tree:`. It includes direct posts and posts from every descendant.
+fn apply_pool_tree_filter(
+    conn: &mut PgConnection,
+    query: BoxedQuery,
+    filter: UnparsedFilter<Token>,
+    state: &mut CacheState,
+) -> ApiResult<BoxedQuery> {
+    let roots = resolve_pool_ids(conn, filter)?;
+    let ids = if roots.is_empty() {
+        roots
+    } else {
+        diesel::sql_query(
+            "WITH RECURSIVE descendants(id) AS (\
+                SELECT UNNEST($1::BIGINT[]) UNION \
+                SELECT edge.child_id FROM pool_subpool edge JOIN descendants ON edge.parent_id = descendants.id\
+             ) SELECT id FROM descendants",
+        )
+        .bind::<diesel::sql_types::Array<diesel::sql_types::BigInt>, _>(roots)
+        .load::<PoolId>(conn)?
+        .into_iter()
+        .map(|row| row.id)
+        .collect()
+    };
+    apply_pool_filter_for_ids(conn, query, filter, state, Some(ids))
+}
+
+fn apply_pool_filter_for_ids(
+    conn: &mut PgConnection,
+    query: BoxedQuery,
+    filter: UnparsedFilter<Token>,
+    state: &mut CacheState,
+    ids: Option<Vec<i64>>,
+) -> ApiResult<BoxedQuery> {
+    if let Some(ids) = ids {
+        let pool_posts = pool_post::table.select(pool_post::post_id).into_boxed();
+        let pool_posts = apply_distinct_if_multivalued!(pool_posts, filter);
+        update_filter_cache!(conn, pool_posts.filter(pool_post::pool_id.eq_any(ids)), pool_post::post_id, filter, state)?;
+        return Ok(query);
+    }
     if parse::condition::<i64>(filter.condition).is_ok() {
         let pool_posts = pool_post::table.select(pool_post::post_id).into_boxed();
         let pool_posts = apply_distinct_if_multivalued!(pool_posts, filter);
@@ -393,6 +437,27 @@ fn apply_pool_filter(
         update_filter_cache!(conn, filtered_posts, pool_post::post_id, filter, state)?;
     }
     Ok(query)
+}
+
+fn resolve_pool_ids(conn: &mut PgConnection, filter: UnparsedFilter<Token>) -> QueryResult<Vec<i64>> {
+    if let Ok(condition) = parse::condition::<i64>(filter.condition) {
+        let pools = pool::table.select(pool::id).into_boxed();
+        match condition {
+            Condition::Values(values) => pools.filter(pool::id.eq_any(values)).load(conn),
+            Condition::GreaterEq(value) => pools.filter(pool::id.ge(value)).load(conn),
+            Condition::LessEq(value) => pools.filter(pool::id.le(value)).load(conn),
+            Condition::Range(range) => pools.filter(pool::id.between(range.start, range.end)).load(conn),
+        }
+    } else {
+        let pools = pool::table.inner_join(pool_name::table).select(pool::id).into_boxed();
+        apply_str_filter!(pools, pool_name::name, filter.unnegated()).load(conn)
+    }
+}
+
+#[derive(QueryableByName)]
+struct PoolId {
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    id: i64,
 }
 
 fn apply_pool_category_filter(
@@ -590,6 +655,7 @@ pub fn filter_table() -> TokenTable<&'static str> {
         _tag: "-plant,sky,tagme",
         _tag_category: "s*",
         _pool: "-2",
+        _pool_tree: "-2",
         _pool_category: "style",
         _uploader: "-restricted_user",
         _fav: "*user*",

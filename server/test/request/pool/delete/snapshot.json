@@ -2,6 +2,7 @@
   "description": "This is a test pool",
   "launch_date": null,
   "category": "default",
+  "children": [],
   "names": [
     "Name1",
     "Name2",

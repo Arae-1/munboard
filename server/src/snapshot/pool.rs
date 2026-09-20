@@ -3,11 +3,11 @@ use crate::auth::Client;
 use crate::model::enums::{ResourceOperation, ResourceType};
 use crate::model::pool::Pool;
 use crate::model::snapshot::NewSnapshot;
-use crate::schema::{pool_category, pool_name, pool_post};
+use crate::schema::{pool_category, pool_name, pool_post, pool_subpool};
 use crate::snapshot;
 use crate::string::{LargeString, SmallString};
 use crate::time::DateTime;
-use diesel::{ExpressionMethods, PgConnection, QueryDsl, QueryResult, RunQueryDsl};
+use diesel::{ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, QueryResult, RunQueryDsl};
 use serde::Serialize;
 use serde_json::json;
 
@@ -18,6 +18,9 @@ pub struct SnapshotData {
     pub category: SmallString,
     pub names: Vec<SmallString>,
     pub posts: Vec<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent: Option<i64>,
+    pub children: Vec<i64>,
 }
 
 impl SnapshotData {
@@ -34,6 +37,16 @@ impl SnapshotData {
             .select(pool_post::post_id)
             .filter(pool_post::pool_id.eq(pool.id))
             .load(conn)?;
+        let parent = pool_subpool::table
+            .select(pool_subpool::parent_id)
+            .filter(pool_subpool::child_id.eq(pool.id))
+            .first(conn)
+            .optional()?;
+        let children = pool_subpool::table
+            .select(pool_subpool::child_id)
+            .filter(pool_subpool::parent_id.eq(pool.id))
+            .order(pool_subpool::order)
+            .load(conn)?;
 
         Ok(Self {
             description: pool.description,
@@ -41,6 +54,8 @@ impl SnapshotData {
             category,
             names,
             posts,
+            parent,
+            children,
         })
     }
 

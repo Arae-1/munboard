@@ -147,6 +147,8 @@ struct PoolCreateBody {
     launch_date: Option<DateTime>,
     /// List of post IDs to include in the pool.
     posts: Option<Vec<i64>>,
+    /// Optional parent pool ID. A pool has no more than one parent.
+    parent: Option<i64>,
 }
 
 /// Creates a new pool using specified parameters.
@@ -155,6 +157,7 @@ struct PoolCreateBody {
 /// Category must exist and is the same as `name` field within the
 /// pool category resource. `posts` is an optional list of integer post IDs.
 /// If the specified posts do not exist, an error will be thrown.
+/// `parent` is an optional pool ID. It makes the new pool a child of that pool.
 #[utoipa::path(
     post,
     path = "/pool",
@@ -165,11 +168,13 @@ struct PoolCreateBody {
         (status = 200, body = PoolInfo),
         (status = 403, description = "Privileges are too low"),
         (status = 404, description = "At least one post ID does not exist"),
+        (status = 404, description = "Parent pool does not exist"),
         (status = 409, description = "Any name is used by an existing pool"),
         (status = 409, description = "There is at least one duplicate post"),
         (status = 422, description = "A name is invalid"),
         (status = 422, description = "No name was specified"),
         (status = 422, description = "Category is missing or invalid"),
+        (status = 422, description = "Parent pool is invalid"),
     ),
 )]
 async fn create(
@@ -178,6 +183,9 @@ async fn create(
     Json(body): Json<PoolCreateBody>,
 ) -> ApiResult<Json<PoolInfo>> {
     ctx.verify_privilege(Action::PoolCreate)?;
+    if body.parent.is_some() {
+        ctx.verify_privilege(Action::PoolEditPost)?;
+    }
 
     if body.names.is_empty() {
         return Err(ApiError::NoNamesGiven(ResourceType::Pool));
@@ -206,6 +214,7 @@ async fn create(
                 // Set names and posts
                 update::pool::set_names(conn, &config, pool.id, &body.names)?;
                 update::pool::add_posts(conn, pool.id, 0, &posts)?;
+                update::pool::set_parent(conn, pool.id, body.parent)?;
 
                 let pool_data = SnapshotData {
                     description: body.description.unwrap_or_default(),
@@ -213,6 +222,8 @@ async fn create(
                     category,
                     names: body.names,
                     posts,
+                    parent: body.parent,
+                    children: Vec::new(),
                 };
                 snapshot::pool::creation_snapshot(conn, ctx.client, pool.id, pool_data)?;
                 Ok::<_, ApiError>(pool)
@@ -240,6 +251,7 @@ async fn create(
         (status = 404, description = "Source or target pool does not exist"),
         (status = 409, description = "Version of either pool is outdated"),
         (status = 422, description = "Source pool is the same as the target pool"),
+        (status = 422, description = "Either pool has a parent or child relationship"),
     ),
 )]
 async fn merge(
@@ -303,6 +315,11 @@ struct PoolUpdateBody {
     names: Option<Vec<SmallString>>,
     /// List of post IDs. Replaces the previous list.
     posts: Option<Vec<i64>>,
+    /// Parent pool ID. Send `null` to make this pool a root pool.
+    #[serde(default)]
+    parent: Option<Option<i64>>,
+    /// Ordered child pool IDs. This replaces the current child list.
+    children: Option<Vec<i64>>,
 }
 
 /// Updates an existing pool using specified parameters.
@@ -314,6 +331,7 @@ struct PoolUpdateBody {
 /// The full list of post IDs must be provided if they are being updated,
 /// and the previous list of posts will be replaced with the new one.
 /// All fields except `version` are optional - update concerns only provided fields.
+/// `parent` changes the direct parent. Send `null` to make the pool a root pool.
 #[utoipa::path(
     put,
     path = "/pool/{id}",
@@ -328,12 +346,14 @@ struct PoolUpdateBody {
         (status = 403, description = "Privileges are too low"),
         (status = 404, description = "Pool does not exist"),
         (status = 404, description = "At least one post ID does not exist"),
+        (status = 404, description = "Parent pool does not exist"),
         (status = 409, description = "Version is outdated"),
         (status = 409, description = "Any name is used by an existing pool"),
         (status = 409, description = "There is at least one duplicate post"),
         (status = 422, description = "A name is invalid"),
         (status = 422, description = "No name was specified"),
         (status = 422, description = "Category is invalid"),
+        (status = 422, description = "Parent pool is invalid or would create a cycle"),
     ),
 )]
 async fn update(
@@ -394,6 +414,16 @@ async fn update(
                     update::pool::set_posts(conn, &ctx, pool_id, &mut posts)?;
                     new_snapshot_data.posts = posts;
                 }
+                if let Some(parent) = body.parent {
+                    ctx.verify_privilege(Action::PoolEditPost)?;
+                    update::pool::set_parent(conn, pool_id, parent)?;
+                    new_snapshot_data.parent = parent;
+                }
+                if let Some(children) = body.children {
+                    ctx.verify_privilege(Action::PoolEditPost)?;
+                    update::pool::set_children(conn, pool_id, &children)?;
+                    new_snapshot_data.children = children;
+                }
 
                 new_pool.last_edit_time = DateTime::now();
                 let _: Pool = new_pool.save_changes(conn)?;
@@ -424,6 +454,7 @@ async fn update(
         (status = 403, description = "Privileges are too low"),
         (status = 404, description = "Pool does not exist"),
         (status = 409, description = "Version is outdated"),
+        (status = 422, description = "Pool has a parent or child relationship"),
     ),
 )]
 async fn delete(
@@ -443,7 +474,11 @@ async fn delete(
             api::verify_version(pool.last_edit_time, *client_version)?;
 
             let pool_id = pool.id;
+            update::pool::lock_tree(conn)?;
             let pool_data = SnapshotData::retrieve(conn, pool)?;
+            if update::pool::has_relationships(conn, pool_id)? {
+                return Err(ApiError::PoolHasRelationships);
+            }
             snapshot::pool::deletion_snapshot(conn, ctx.client, pool_id, pool_data)?;
 
             diesel::delete(pool::table.find(pool_id)).execute(conn)?;

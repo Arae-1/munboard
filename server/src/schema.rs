@@ -103,6 +103,14 @@ diesel::table! {
 }
 
 diesel::table! {
+    pool_subpool (parent_id, child_id) {
+        parent_id -> Int8,
+        child_id -> Int8,
+        order -> Int8,
+    }
+}
+
+diesel::table! {
     post (id) {
         id -> Int8,
         user_id -> Nullable<Int8>,
@@ -371,6 +379,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     pool_name,
     pool_post,
     pool_statistics,
+    pool_subpool,
     post,
     post_custom_field,
     post_favorite,
