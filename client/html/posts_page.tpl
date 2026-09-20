@@ -4,7 +4,7 @@
             <% for (let post of ctx.response.results) { %>
                 <li data-post-id='<%= post.id %>'>
                     <a class='thumbnail-wrapper <%= post.tags.length > 0 ? "tags" : "no-tags" %> <%= post.tags.filter(tag => tag.names.includes("tag_me")).length > 0 ? "flagged" : "" %>'
-                        title='@<%- post.id %> (<%- post.type %>)&#10;&#10;Tags: <%- post.tags.map(tag => '#' + tag.names[0]).join(' ') || 'none' %>'
+                        title='@<%- post.id %> (<%- post.type %>)&#10;&#10;Tags: <%- post.tags.map(tag => '#' + tag.names[0]).join(' ') || 'none' %><% if (post.pools.length) { %>&#10;Pools:<% for (let pool of post.pools) { %> #<%- pool.names[0] %><% } %><% } %>'
                         href='<%= ctx.canViewPosts ? ctx.getPostUrl(post.id, ctx.parameters) : '' %>'>
                         <%= ctx.makeThumbnail(post.thumbnailUrl) %>
                         <span class='type' data-type='<%- post.type %>'>
@@ -36,6 +36,9 @@
                             </span>
                         <% } %>
                     </a>
+                    <% if (/\bpool-tree:/.test(ctx.parameters.query || '') && post.pools.length) { %>
+                        <span class='pool-source'>From <%- post.pools.map(pool => pool.names[0]).join(', ') %></span>
+                    <% } %>
                     <span class='edit-overlay'>
                         <% if (ctx.canBulkEditTags && ctx.parameters && ctx.parameters.tag) { %>
                             <a href class='tag-flipper'>

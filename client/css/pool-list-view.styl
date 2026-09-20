@@ -1,8 +1,43 @@
 @import colors
 
 .pool-list
+    &.hierarchy
+        table
+            tr.root .names
+                font-weight: bold
+            .tree-guides
+                display: inline-flex
+                height: 1.3em
+                vertical-align: text-bottom
+            .tree-guide
+                display: inline-block
+                position: relative
+                width: 1.4em
+                height: 1.3em
+                flex: 0 0 1.4em
+                &:before, &:after
+                    content: ''
+                    position: absolute
+                    box-sizing: border-box
+                &.continues:before, &.connector:before
+                    top: -0.1em
+                    bottom: -0.1em
+                    left: 50%
+                    border-left: 1px solid $line-color
+                &.connector.last-child:before
+                    bottom: 50%
+                &.connector:after
+                    top: 50%
+                    left: 50%
+                    width: 50%
+                    border-top: 1px solid $line-color
+            @media (max-width: 800px)
+                .tree-guide
+                    width: 1em
+                    flex-basis: 1em
     table
         width: 100%
+        table-layout: fixed
         border-spacing: 0
         text-align: left
         line-height: 1.3em
@@ -42,6 +77,11 @@
             background: $top-navigation-color-darktheme
         th
             background: $top-navigation-color-darktheme
+    &.hierarchy .tree-guide
+        &.continues:before, &.connector:before
+            border-left-color: $line-color-darktheme
+        &.connector:after
+            border-top-color: $line-color-darktheme
 
 .pool-list-header
     label

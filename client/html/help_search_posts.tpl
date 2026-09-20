@@ -36,7 +36,11 @@
         </tr>
         <tr>
             <td><code>pool</code></td>
-            <td>belonging to the pool with the given name (accepts wildcards)</td>
+            <td>directly belonging to the pool with the given name (accepts wildcards)</td>
+        </tr>
+        <tr>
+            <td><code>pool-tree</code></td>
+            <td>belonging to the named pool or one of its descendant pools (accepts wildcards)</td>
         </tr>
         <tr>
             <td><code>pool-id</code></td>

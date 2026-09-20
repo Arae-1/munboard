@@ -5,6 +5,11 @@
         word-break: break-all
         line-height: 130%
         margin-top: 0
+    .pool-breadcrumbs
+        margin-bottom: 0.5em
+        color: $inactive-link-color
+        span
+            margin: 0 0.3em
     form
         width: 100%
     .pool-edit
@@ -14,6 +19,12 @@
         section
             &.description
                 margin: 1.5em 0 0 0
+            &.children
+                margin: 1.5em 0 0 0
+                h2
+                    margin-bottom: 0.5em
+                .child-pool-list a:first-child
+                    margin-right: 0.5em
             &.details
                 vertical-align: top
                 padding-right: 0.5em
@@ -31,3 +42,8 @@
                     content: '(none)'
                 section
                     margin-bottom: 1em
+        .pool-post-navigation
+            margin-top: 1em
+
+.darktheme #pool .pool-breadcrumbs
+    color: $inactive-link-color-darktheme

@@ -17,6 +17,7 @@ const fields = [
     "creationTime",
     "postCount",
     "category",
+    "parent",
 ];
 
 class PoolListController {
@@ -91,7 +92,7 @@ class PoolListController {
     _syncPageController() {
         this._pageController.run({
             parameters: this._ctx.parameters,
-            defaultLimit: 50,
+            defaultLimit: this._ctx.parameters.flat || this._ctx.parameters.query ? 50 : 1000,
             getClientUrlForPage: (offset, limit) => {
                 const parameters = Object.assign({}, this._ctx.parameters, {
                     offset: offset,
@@ -109,7 +110,9 @@ class PoolListController {
                 );
             },
             pageRenderer: (pageCtx) => {
-                return new PoolsPageView(pageCtx);
+                return new PoolsPageView(Object.assign(pageCtx, {
+                    hierarchy: !this._ctx.parameters.flat && !this._ctx.parameters.query,
+                }));
             },
         });
     }

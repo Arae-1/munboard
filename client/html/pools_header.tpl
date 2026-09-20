@@ -9,6 +9,11 @@
         <div class='buttons'>
             <input type='submit' value='Search'/>
             <a class='button append' href='<%- ctx.formatClientLink('help', 'search', 'pools') %>'>Syntax help</a>
+            <% if (ctx.parameters.flat) { %>
+                <a class='append' href='<%- ctx.formatClientLink('pools') %>'>Hierarchy view</a>
+            <% } else { %>
+                <a class='append' href='<%- ctx.formatClientLink('pools', {flat: 1}) %>'>Flat list</a>
+            <% } %>
 
             <% if (ctx.canCreate) { %>
                 <a class='append' href='<%- ctx.formatClientLink('pool', 'create') %>'>Add new pool</a>

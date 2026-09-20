@@ -23,6 +23,14 @@ const fields = [
     "version",
 ];
 
+function getFields(query) {
+    const result = [...fields];
+    if (/\bpool-tree:/.test(query || "")) {
+        result.push("pools");
+    }
+    return result;
+}
+
 class PostListController {
     constructor(ctx) {
         this._pageController = new PageController();
@@ -150,7 +158,7 @@ class PostListController {
                     this._ctx.parameters.query,
                     offset,
                     limit,
-                    fields
+                    getFields(this._ctx.parameters.query)
                 );
             },
             pageRenderer: (pageCtx) => {
