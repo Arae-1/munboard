@@ -37,15 +37,17 @@
                     <% for (let row of rows) { %>
                         <tr class='<%- row.depth ? 'child' : 'root' %> depth-<%- row.depth %>'>
                             <td class='names'>
-                                <% if (row.depth) { %>
-                                    <span class='tree-guides' aria-hidden='true'><% for (let continues of row.ancestorContinues) { %><span class='tree-guide ancestor <%- continues ? 'continues' : '' %>'></span><% } %><span class='tree-guide connector <%- row.isLastChild ? 'last-child' : 'branch' %>'></span></span>
-                                <% } %>
-                                <ul>
-                                    <% for (let name of row.pool.names) { %>
-                                        <li><a href='<%- ctx.formatClientLink('posts', {query: 'pool-tree:' + row.pool.searchableName}) %>' class='<%- ctx.makeCssName(row.pool.category, 'pool') %>'><%- ctx.getPrettyName(name) %></a></li>
+                                <div class='pool-row'>
+                                    <% if (row.depth) { %>
+                                        <span class='tree-guides' aria-hidden='true'><% for (let continues of row.ancestorContinues) { %><span class='tree-guide ancestor <%- continues ? 'continues' : '' %>'></span><% } %><span class='tree-guide connector <%- row.isLastChild ? 'last-child' : 'branch' %>'></span></span>
                                     <% } %>
-                                </ul>
-                                <a class='pool-overview' href='<%- ctx.formatClientLink('pool', row.pool.id) %>'>Overview</a>
+                                    <ul class='pool-names'>
+                                        <% for (let name of row.pool.names) { %>
+                                            <li><a href='<%- ctx.formatClientLink('posts', {query: 'pool-tree:' + row.pool.searchableName}) %>' class='<%- ctx.makeCssName(row.pool.category, 'pool') %>'><%- ctx.getPrettyName(name) %></a></li>
+                                        <% } %>
+                                    </ul>
+                                    <span class='pool-actions'><a class='pool-overview' href='<%- ctx.formatClientLink('pool', row.pool.id) %>'>Overview</a></span>
+                                </div>
                             </td>
                             <td class='post-count'><a href='<%- ctx.formatClientLink('posts', {query: 'pool:' + row.pool.searchableName}) %>'><%- row.pool.postCount %></a></td>
                             <td class='creation-time'><%= ctx.makeRelativeTime(row.pool.creationTime) %></td>
