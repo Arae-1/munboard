@@ -42,9 +42,10 @@
                                 <% } %>
                                 <ul>
                                     <% for (let name of row.pool.names) { %>
-                                        <li><%= ctx.makePoolLink(row.pool.id, false, false, row.pool, name) %></li>
+                                        <li><a href='<%- ctx.formatClientLink('posts', {query: 'pool-tree:' + row.pool.searchableName}) %>' class='<%- ctx.makeCssName(row.pool.category, 'pool') %>'><%- ctx.getPrettyName(name) %></a></li>
                                     <% } %>
                                 </ul>
+                                <a class='pool-overview' href='<%- ctx.formatClientLink('pool', row.pool.id) %>'>Overview</a>
                             </td>
                             <td class='post-count'><a href='<%- ctx.formatClientLink('posts', {query: 'pool:' + row.pool.searchableName}) %>'><%- row.pool.postCount %></a></td>
                             <td class='creation-time'><%= ctx.makeRelativeTime(row.pool.creationTime) %></td>

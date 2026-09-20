@@ -12,9 +12,9 @@
             .tree-guide
                 display: inline-block
                 position: relative
-                width: 1.4em
+                width: 1em
                 height: 1.3em
-                flex: 0 0 1.4em
+                flex: 0 0 1em
                 &:before, &:after
                     content: ''
                     position: absolute
@@ -33,8 +33,12 @@
                     border-top: 1px solid $line-color
             @media (max-width: 800px)
                 .tree-guide
-                    width: 1em
-                    flex-basis: 1em
+                    width: 0.8em
+                    flex-basis: 0.8em
+            .pool-overview
+                margin-left: 0.7em
+                font-size: 90%
+                color: $inactive-link-color
     table
         width: 100%
         table-layout: fixed
@@ -82,6 +86,8 @@
             border-left-color: $line-color-darktheme
         &.connector:after
             border-top-color: $line-color-darktheme
+    &.hierarchy .pool-overview
+        color: $inactive-link-color-darktheme
 
 .pool-list-header
     label

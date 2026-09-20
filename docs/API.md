@@ -1336,6 +1336,28 @@ data.
 
     Retrieves information about an existing pool.
 
+    Request hierarchy and post fields explicitly when needed:
+
+    ```
+    GET /pool/10?fields=posts,directPosts,postCount,parent,ancestors,children
+    ```
+
+    A pool with one direct post and one child post can return:
+
+    ```json5
+    {
+        "posts": [
+            {"id": 100, "thumbnailUrl": "..."},
+            {"id": 200, "thumbnailUrl": "...", "sourcePool": {"id": 11, "name": "chapter-1"}}
+        ],
+        "directPosts": [{"id": 100, "thumbnailUrl": "..."}],
+        "postCount": 2,
+        "parent": {"id": 9, "name": "series"},
+        "ancestors": [{"id": 1, "name": "root"}, {"id": 9, "name": "series"}],
+        "children": [{"id": 11, "name": "chapter-1", "category": "series", "postCount": 1}]
+    }
+    ```
+
 ### Creating pool
 - **Request**
 
@@ -1349,6 +1371,7 @@ data.
         "category":     <category>,
         "description":  <description>,           // optional
         "posts":        [<id1>, <id2>, ...],     // optional
+        "parent":       <pool-id>,                // optional
     }
     ```
 
@@ -1372,7 +1395,8 @@ data.
     Category must exist and is the same as `name` field within
     [`<pool-category>` resource](#pool-category). `posts` is an optional list of
     integer post IDs. If the specified posts do not exist, an error will be
-    thrown.
+    thrown. `parent` is an optional pool ID. It makes the new pool a child of
+    that pool.
 
 ### Merging pools
 - **Request**
@@ -1421,6 +1445,8 @@ data.
         "category":     <category>,              // optional
         "description":  <description>,           // optional
         "posts":        [<id1>, <id2>, ...],     // optional
+        "parent":       <pool-id>|null,           // optional
+        "children":     [<pool-id1>, ...],        // optional
     }
     ```
 
@@ -1449,7 +1475,10 @@ data.
     thrown. The full list of post IDs must be provided if they are being
     updated, and the previous list of posts will be replaced with the new one.
     All fields except the [`version`](#versioning) are optional - update
-    concerns only provided fields.
+    concerns only provided fields. `parent` sets the direct parent. Send
+    `null` to make the pool a root pool. `children` replaces the ordered child
+    list. The order in this list is the child order. A child can have only one
+    parent. The server rejects missing pools, duplicate children, and cycles.
 
 ### Deleting pool
 - **Request**
@@ -2492,10 +2521,14 @@ An ordered list of posts, with a description and category.
     "id":           <id>,
     "names":        <names>,
     "category":     <category>,
-    "posts":        <suggestions>,
+    "posts":        <posts>,
+    "directPosts":  <direct-posts>,
     "creationTime": <creation-time>,
     "lastEditTime": <last-edit-time>,
     "postCount":   <post-count>,
+    "parent":       <parent-pool>,
+    "ancestors":    [<ancestor-pool>, ...],
+    "children":     [<child-pool>, ...],
     "description":  <description>
 }
 ```
@@ -2506,11 +2539,21 @@ An ordered list of posts, with a description and category.
 - `<id>`: the pool identifier.
 - `<names>`: a list of pool names (aliases).
 - `<category>`: the name of the category the given pool belongs to.
-- `<posts>`: an ordered list of posts, serialized as [micro
-  post resource](#micro-post). Posts are ordered by insertion by default.
+- `<posts>`: an ordered list of direct and descendant posts. It uses pool post
+  objects. A descendant post includes `sourcePool`. Each post occurs once.
+- `<direct-posts>`: an ordered list of posts directly in this pool. Use this
+  field when you edit direct pool membership.
 - `<creation-time>`: time the pool was created, formatted as per RFC 3339.
 - `<last-edit-time>`: time the pool was edited, formatted as per RFC 3339.
-- `<post-count>`: the number of posts the pool has.
+- `<post-count>`: the number of unique direct and descendant posts. It matches
+  `posts`, not `directPosts`.
+- `<parent-pool>`: the direct parent pool, or `null` for a root pool. It has
+  `id` and `name` fields.
+- `<ancestor-pool>`: a parent pool. `ancestors` is ordered from the root to the
+  direct parent. Each item has `id` and `name` fields.
+- `<child-pool>`: a direct child pool. `children` uses configured child order.
+  Each item has `id`, `name`, `category`, and `postCount` fields. Its
+  `postCount` counts posts directly in that child pool.
 - `<description>`: the pool description (instructions how to use, history etc.)
   The client should render it as Markdown.
 
