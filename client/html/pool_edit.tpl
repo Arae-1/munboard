@@ -50,9 +50,9 @@
                 <% if (ctx.canEditPosts) { %>
                     <%= ctx.makeTextInput({
                         text: 'Child pools',
-                        placeholder: 'type to add a child pool…'
+                        placeholder: 'type a pool name or #ID to add…'
                     }) %>
-                    <p class='hint' id='child-pools-hint'>Select a suggested pool. Use the arrows to set the child order.</p>
+                    <p class='hint' id='child-pools-hint'>Select a suggested pool, or press Enter after a pool ID such as #7. Use the arrows to set the child order.</p>
                 <% } %>
             </li>
         </ul>

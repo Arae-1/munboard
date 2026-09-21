@@ -19,7 +19,7 @@ class PoolChildrenInputControl extends events.EventTarget {
         this._nodes = new Map();
         this._editAreaNode = template();
         this._inputNode = this._editAreaNode.querySelector("input");
-        this._inputNode.placeholder = "type a pool name or ID to add…";
+        this._inputNode.placeholder = "type a pool name or #ID to add…";
         this._listNode = this._editAreaNode.querySelector("ul");
         this._autoCompleteControl = new PoolAutoCompleteControl(this._inputNode, {
             getTextToFind: () => this._inputNode.value,
@@ -74,7 +74,7 @@ class PoolChildrenInputControl extends events.EventTarget {
     }
 
     _syncValidity() {
-        const message = this._inputNode.value.trim() ? "Select a pool from the suggestion list, or enter a pool ID. Clear the field to save without adding a pool." : "";
+        const message = this._inputNode.value.trim() ? "Select a pool from the suggestion list, or enter a pool ID as #7. Clear the field to save without adding a pool." : "";
         this._inputNode.setCustomValidity(message);
         if (!message) {
             this._errorNode.textContent = "";
@@ -99,10 +99,16 @@ class PoolChildrenInputControl extends events.EventTarget {
 
     _addInput() {
         const text = this._inputNode.value.trim();
-        if (/^\d+$/.test(text)) {
-            Pool.get(text, ["id", "names", "category", "postCount", "ancestors"])
+        const poolIdMatch = text.match(/^#([1-9]\d*)$/);
+        if (poolIdMatch) {
+            Pool.get(poolIdMatch[1], ["id", "names", "category", "postCount", "ancestors"])
                 .then((pool) => this._confirmInput(pool))
                 .catch(() => this._showInputError(`Pool ID "${text}" does not exist.`));
+            return;
+        }
+
+        if (text.startsWith("#")) {
+            this._showInputError("Enter a positive pool ID as #7, or select a pool from the suggestion list.");
             return;
         }
 
