@@ -56,6 +56,7 @@ pub struct ChildPool {
     pub name: SmallString,
     pub category: SmallString,
     pub post_count: i64,
+    pub ancestors: Vec<ParentPool>,
 }
 
 /// A post shown on a pool page. Descendant posts contain their source pool.
@@ -303,6 +304,11 @@ fn get_parents(conn: &mut PgConnection, pools: &[Pool]) -> QueryResult<Vec<Optio
 }
 
 fn get_ancestors(conn: &mut PgConnection, pools: &[Pool]) -> QueryResult<Vec<Vec<ParentPool>>> {
+    let pool_ids: Vec<_> = pools.iter().map(Identifiable::id).copied().collect();
+    get_ancestors_from_ids(conn, &pool_ids)
+}
+
+fn get_ancestors_from_ids(conn: &mut PgConnection, pool_ids: &[i64]) -> QueryResult<Vec<Vec<ParentPool>>> {
     #[derive(QueryableByName)]
     struct Ancestor {
         #[diesel(sql_type = diesel::sql_types::BigInt)]
@@ -312,7 +318,6 @@ fn get_ancestors(conn: &mut PgConnection, pools: &[Pool]) -> QueryResult<Vec<Vec
         #[diesel(sql_type = diesel::sql_types::Text)]
         name: SmallString,
     }
-    let pool_ids: Vec<_> = pools.iter().map(Identifiable::id).copied().collect();
     let rows: Vec<Ancestor> = diesel::sql_query(
         "WITH RECURSIVE ancestors(root_id, id, depth) AS (\
             SELECT roots.root_id, edge.parent_id, 1::INTEGER FROM UNNEST($1::BIGINT[]) AS roots(root_id) JOIN pool_subpool edge ON edge.child_id = roots.root_id \
@@ -326,7 +331,7 @@ fn get_ancestors(conn: &mut PgConnection, pools: &[Pool]) -> QueryResult<Vec<Vec
     for row in rows {
         result.entry(row.root_id).or_default().push(ParentPool { id: row.id, name: row.name });
     }
-    Ok(pools.iter().map(|pool| result.remove(&pool.id).unwrap_or_default()).collect())
+    Ok(pool_ids.iter().map(|pool_id| result.remove(pool_id).unwrap_or_default()).collect())
 }
 
 fn get_children(conn: &mut PgConnection, pools: &[Pool]) -> QueryResult<Vec<Vec<ChildPool>>> {
@@ -357,6 +362,9 @@ fn get_children(conn: &mut PgConnection, pools: &[Pool]) -> QueryResult<Vec<Vec<
     )
     .bind::<diesel::sql_types::Array<diesel::sql_types::BigInt>, _>(pool_ids)
     .load(conn)?;
+    let child_ids: Vec<_> = rows.iter().map(|row| row.id).collect();
+    let ancestors = get_ancestors_from_ids(conn, &child_ids)?;
+    let ancestors: HashMap<_, _> = child_ids.into_iter().zip(ancestors).collect();
     let mut result: HashMap<i64, Vec<ChildPool>> = HashMap::new();
     for row in rows {
         result.entry(row.parent_id).or_default().push(ChildPool {
@@ -364,6 +372,7 @@ fn get_children(conn: &mut PgConnection, pools: &[Pool]) -> QueryResult<Vec<Vec<
             name: row.name,
             category: row.category,
             post_count: row.post_count,
+            ancestors: ancestors.get(&row.id).cloned().unwrap_or_default(),
         });
     }
     Ok(pools.iter().map(|pool| result.remove(&pool.id).unwrap_or_default()).collect())
@@ -455,6 +464,7 @@ mod test {
 
         let children = get_children(&mut conn, &pools).unwrap();
         assert_eq!(children[0].as_slice().first().map(|child| child.id), Some(5));
+        assert_eq!(children[0].as_slice().first().and_then(|child| child.ancestors.last()).map(|parent| parent.id), Some(4));
         assert!(children[1].is_empty());
         reset_database();
     }

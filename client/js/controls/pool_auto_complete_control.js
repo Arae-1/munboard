@@ -16,13 +16,21 @@ function _poolListToMatches(text, pools, options) {
                 '<span class="' +
                 cssName +
                 '">' +
-                misc.escapeHtml(pool.matchingNames[0] + " (" + pool.postCount + ")") +
+                misc.escapeHtml(_getCaption(pool)) +
                 "</span>";
             return {
                 caption: caption,
                 value: pool,
             };
         });
+}
+
+function _getCaption(pool) {
+    const path = [
+        ...(pool.ancestors || []).map((ancestor) => ancestor.name),
+        pool.matchingNames[0],
+    ].join(" / ");
+    return path + " (#" + pool.id + ", " + pool.postCount + ")";
 }
 
 class PoolAutoCompleteControl extends AutoCompleteControl {
@@ -42,6 +50,7 @@ class PoolAutoCompleteControl extends AutoCompleteControl {
                     "names",
                     "category",
                     "postCount",
+                    "ancestors",
                     "version",
                 ],
                 { noProgress: true }).then(
