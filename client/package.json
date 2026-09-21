@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "build": "node build.js",
+    "test:pools-page-hierarchy": "node test/pools_page_hierarchy_test.js",
     "watch": "node build.js --watch",
     "build-container": "docker build -t szurubooru/client:dev ."
   },
