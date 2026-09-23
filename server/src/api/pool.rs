@@ -297,6 +297,10 @@ fn deserialize_clearable_date<'de, D: Deserializer<'de>>(d: D) -> Result<Option<
     Ok(Some(Option::<DateTime>::deserialize(d)?))
 }
 
+fn deserialize_clearable_parent<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Option<i64>>, D::Error> {
+    Ok(Some(Option::<i64>::deserialize(d)?))
+}
+
 /// Request body for updating a pool.
 #[derive(Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -316,7 +320,8 @@ struct PoolUpdateBody {
     /// List of post IDs. Replaces the previous list.
     posts: Option<Vec<i64>>,
     /// Parent pool ID. Send `null` to make this pool a root pool.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_clearable_parent")]
+    #[schema(value_type = Option<i64>)]
     parent: Option<Option<i64>>,
     /// Ordered child pool IDs. This replaces the current child list.
     children: Option<Vec<i64>>,
@@ -492,12 +497,18 @@ mod test {
     use crate::api::error::ApiResult;
     use crate::model::enums::{ResourceType, UserRank};
     use crate::model::pool::Pool;
-    use crate::schema::{database_statistics, pool, pool_statistics};
+    use crate::schema::{database_statistics, pool, pool_statistics, pool_subpool};
     use crate::search::pool::Token;
     use crate::test::*;
     use crate::time::DateTime;
     use diesel::dsl::exists;
-    use diesel::{ExpressionMethods, PgConnection, QueryDsl, QueryResult, RunQueryDsl, SelectableHelper};
+    use axum::ServiceExt;
+    use axum::extract::Request;
+    use axum::http::header::AUTHORIZATION;
+    use axum::http::StatusCode;
+    use axum_test::TestServer;
+    use diesel::{ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, QueryResult, RunQueryDsl, SelectableHelper};
+    use serde_json::{Value, json};
     use serial_test::{parallel, serial};
     use strum::IntoEnumIterator;
 
@@ -647,6 +658,51 @@ mod test {
         assert_eq!(new_pool.creation_time, pool.creation_time);
         assert!(new_pool.last_edit_time > pool.last_edit_time);
         assert_eq!(new_post_count, post_count);
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn update_parent_distinguishes_missing_null_and_id() -> ApiResult<()> {
+        const CHILD_ID: i64 = 5;
+        let mut conn = get_connection()?;
+        let (router, _) = crate::api::routes(get_state()).split_for_parts();
+        let server = TestServer::new(ServiceExt::<Request>::into_make_service(router))
+            .expect("Test server must be constructible");
+        let credentials = crate::auth::header::basic_credentials_for("administrator", TEST_PASSWORD);
+
+        for (parent_field, expected_parent) in [
+            (Some(Some(4)), Some(4)),
+            (None, Some(4)),
+            (Some(None), None),
+            (Some(Some(2)), Some(2)),
+        ] {
+            let version: DateTime = pool::table.find(CHILD_ID).select(pool::last_edit_time).first(&mut conn)?;
+            let mut body = json!({ "version": version });
+            if let Some(parent) = parent_field {
+                body["parent"] = json!(parent);
+            }
+
+            let response = server
+                .put(&format!("/pool/{CHILD_ID}?fields=id,parent"))
+                .add_header(AUTHORIZATION, &credentials)
+                .json(&body)
+                .await;
+            assert_eq!(response.status_code(), StatusCode::OK);
+            let actual: Value = serde_json::from_slice(response.as_bytes())?;
+            assert_eq!(actual["id"], json!(CHILD_ID));
+            assert!(actual.get("parent").is_some());
+            assert_eq!(actual["parent"]["id"], expected_parent.map_or(Value::Null, |id| json!(id)));
+
+            let stored_parent: Option<i64> = pool_subpool::table
+                .select(pool_subpool::parent_id)
+                .filter(pool_subpool::child_id.eq(CHILD_ID))
+                .first(&mut conn)
+                .optional()?;
+            assert_eq!(stored_parent, expected_parent);
+        }
+
+        reset_database();
         Ok(())
     }
 
